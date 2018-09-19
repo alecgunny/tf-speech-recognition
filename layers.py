@@ -2,11 +2,9 @@ import tensorflow as tf
 
 
 class DeepSpeechCell(tf.keras.layers.Layer):
-  def __init__(self, state_size, kernel=None, bias=None, **kwargs):
+  def __init__(self, state_size, **kwargs):
     self.state_size = state_size
     self.units = state_size
-    self.kernel = kernel
-    self.bias = bias
     super(DeepSpeechCell, self).__init__(**kwargs)
 
   def call(self, inputs, states):
@@ -19,23 +17,27 @@ class DeepSpeechCell(tf.keras.layers.Layer):
   def build(self, input_shape):
     self.input_dim = input_shape[1]
     if self.built:
+      self.recurrent_kernel = self.backward_recurrent_kernel
       return
 
-    if self.kernel is None:
-      self.kernel = self.add_weight(
-        shape=(self.input_dim, self.state_size),
-        name='kernel',
-        initializer='glorot_normal')
-    if self.bias is None:
-      self.bias = self.add_weight(
-        shape=(self.state_size,),
-        name='bias',
-        initializer='zeros')
-
-    self.recurrent_kernel = self.add_weight(
-      shape=(self.state_size, self.state_size),
-      name='recurrent_kernel',
+    self.kernel = self.add_weight(
+      shape=(self.input_dim, self.state_size),
+      name='kernel',
       initializer='glorot_normal')
+    self.bias = self.add_weight(
+      shape=(self.state_size,),
+      name='bias',
+      initializer='zeros')
+
+    self.forward_recurrent_kernel = self.add_weight(
+      shape=(self.state_size, self.state_size),
+      name='forward_recurrent_kernel',
+      initializer='glorot_normal')
+    self.backward_recurrent_kernel = self.add_weight(
+      shape=(self.state_size, self.state_size),
+      name='backward_recurrent_kernel',
+      initializer='glorot_normal')
+    self.recurrent_kernel = self.forward_recurrent_kernel
     super(DeepSpeechCell, self).build(input_shape)
 
   def get_config(self):
