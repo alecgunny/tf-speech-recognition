@@ -8,25 +8,18 @@ import multiprocessing as mp
 _SAMPLE_RATE = 16000
 
 
-def get_read_audio_fn(table):
-  def read_audio(fname):
-    audio_binary = tf.read_file(fname)
-    waveform = tf.contrib.ffmpeg.decode_audio(
-      audio_binary,
-      file_format='wav',
-      samples_per_second=_SAMPLE_RATE,
-      channel_count=1)[:, 0]
-    num_samples = tf.shape(waveform)[0]
-    pad_front = (_SAMPLE_RATE - num_samples) // 2
-    pad_back = (_SAMPLE_RATE - num_samples) - pad_front
-    waveform = tf.pad(waveform, [[pad_front, pad_back]])
-
-    if table is not None:
-      word = tf.string_split([fname], delimiter="/").values[-2:-1]
-      id = table.lookup(word)[0]
-      return waveform, id
-    return waveform, None
-  return read_audio
+def read_audio(fname):
+  audio_binary = tf.read_file(fname)
+  waveform = tf.contrib.ffmpeg.decode_audio(
+    audio_binary,
+    file_format='wav',
+    samples_per_second=_SAMPLE_RATE,
+    channel_count=1)[:, 0]
+  num_samples = tf.shape(waveform)[0]
+  pad_front = (_SAMPLE_RATE - num_samples) // 2
+  pad_back = (_SAMPLE_RATE - num_samples) - pad_front
+  waveform = tf.pad(waveform, [[pad_front, pad_back]])
+  return waveform, fname
 
 
 def make_spectrogram(dataset):
@@ -46,7 +39,7 @@ def make_spectrogram(dataset):
 def make_iterator(dataset, batch_size, table=None):
   return (dataset.apply(
     tf.contrib.data.map_and_batch(
-      map_func=get_read_audio_fn(table),
+      map_func=read_audio,
       batch_size=batch_size,
       num_parallel_calls=mp.cpu_count())
     )
@@ -55,8 +48,10 @@ def make_iterator(dataset, batch_size, table=None):
   )
 
 
-def _int64_feature(value):
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+def _bytes_feature(value):
+  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+
 def _float_feature(array):
   if array.ndim > 1:
     array = array.ravel()
@@ -83,19 +78,21 @@ def build_tfrecord(
         str(samples_processed).zfill(zeroes),
         dataset_size,
         samples_per_second))
+
     try:
       specs, labels = session.run([spectrogram, label])
       for spec, l in zip(specs, labels):
-        feature = {'train/spec': _float_feature(spec)}
-        if l is not None:
-          feature['train/label'] = _int64_feature(l)
-
+        feature = {
+          'spec': _float_feature(spec),
+          'label': _bytes_feature(tf.compat.as_bytes(l))
+        }
         example = tf.train.Example(features=tf.train.Features(feature=feature))
         writer.write(example.SerializeToString())
       samples_processed += len(specs)
       batches_processed += 1
     except tf.errors.OutOfRangeError:
       break
+
   writer.close()
 
 def main():
@@ -123,6 +120,7 @@ def main():
       filename = os.path.join(dataset_path, 'train', 'audio', word, fname)
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
+  test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
 
   train_files = tf.data.Dataset.from_tensor_slices(train_files)
   valid_files = tf.data.Dataset.from_tensor_slices(validation_files)
@@ -140,7 +138,7 @@ def main():
   train_audio, train_labels = train_iterator.get_next()
   valid_audio, valid_labels = valid_iterator.get_next()
   ptest_audio, ptest_labels = ptest_iterator.get_next()
-  test_audio, empty_test_labels = test_iterator.get_next()
+  test_audio, test_labels = test_iterator.get_next()
 
   train_spectrograms = make_spectrogram(train_audio)
   valid_spectrograms = make_spectrogram(valid_audio)
@@ -149,7 +147,7 @@ def main():
 
   sess = tf.Session()
   tf.tables_initializer().run(session=sess)
-  sess.run([i.initializer for i in [train_iterator, valid_iterator, ptest_iterator]])
+  sess.run([i.initializer for i in [train_iterator, valid_iterator, ptest_iterator, test_iterator]])
 
   build_tfrecord(
     train_spectrograms,
@@ -173,6 +171,11 @@ def main():
     len(pseudo_test_files))
 
   build_tfrecord(
+    test_spectrograms,
+    test_labels,
+    sess,
+    os.path.join(dataset_path, 'test.tfrecords'),
+    len(test_files))
     
 
   with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
