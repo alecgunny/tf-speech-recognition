@@ -27,7 +27,8 @@ def get_input_fn(
       spec = tf.reshape(parsed['spec'], [99, 161, 1])
       label = tf.string_split(parsed['label'], delimiter="/").values[-2:-1]
       label = table.lookup(label)[0]
-      return (spec, tf.one_hot(label, len(labels)))
+      label = tf.one_hot(label, len(labels))
+      return (spec, label)
 
     dataset = dataset.apply(
       tf.contrib.data.shuffle_and_repeat(10000, num_epochs))

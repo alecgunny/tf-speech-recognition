@@ -98,7 +98,7 @@ def build_tfrecord(
 def main():
   dataset_path = FLAGS.dataset_path
   test_words = ["yes", "no", "up", "down", "left", "right", "on", "off", "stop", "go"]
-  aux_words = ["bed", "bird", "cat", "dog", "happy", "house", "marvin", "sheila", "tree","wow"]
+  aux_words = ["bed", "bird", "cat", "dog", "happy", "house", "marvin", "sheila", "tree", "wow"]
   full_word_list = os.listdir(os.path.join(dataset_path, 'train', 'audio'))
   del full_word_list[full_word_list.index('_background_noise_')]
 

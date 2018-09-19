@@ -35,13 +35,13 @@ def main():
 
   train_input_fn = data_utils.get_input_fn(
     '/data/train.tfrecords',
-    len(labels),
+    labels,
     FLAGS.batch_size,
     FLAGS.num_epochs)
 
   eval_input_fn = data_utils.get_input_fn(
     '/data/valid.tfrecords',
-    len(labels),
+    labels,
     FLAGS.batch_size*4,
     FLAGS.num_epochs)
 
