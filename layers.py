@@ -43,6 +43,7 @@ class DeepSpeechCell(tf.keras.layers.Layer):
     base_config['state_size'] = self.state_size
     return base_config
 
+
 class ImageToDeepSpeech(tf.keras.layers.Layer):
   def __init__(self, num_frames, frame_step, **kwargs):
     self.num_frames = num_frames
@@ -68,3 +69,4 @@ class ImageToDeepSpeech(tf.keras.layers.Layer):
     base_config['num_frames'] = self.num_frames
     base_config['frame_step'] = self.frame_step
     return base_config
+
