@@ -120,34 +120,34 @@ def main():
       filename = os.path.join(dataset_path, 'train', 'audio', word, fname)
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
-  test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
+  # test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
 
-  train_files = tf.data.Dataset.from_tensor_slices(train_files)
-  valid_files = tf.data.Dataset.from_tensor_slices(validation_files)
-  ptest_files = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
-  test_files = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
+  train_dataset = tf.data.Dataset.from_tensor_slices(train_files)
+  valid_dataset = tf.data.Dataset.from_tensor_slices(validation_files)
+  ptest_dataset = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
+  # test_dataset = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
 
   mapping_strings = tf.constant(words)
   table = tf.contrib.lookup.index_table_from_tensor(mapping=mapping_strings)
 
-  train_iterator = make_iterator(train_files, FLAGS.batch_size, table)
-  valid_iterator = make_iterator(validation_files, FLAGS.batch_size, table)
-  ptest_iterator = make_iterator(pseudo_test_files, FLAGS.batch_size, table)
-  test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
+  train_iterator = make_iterator(train_dataset, FLAGS.batch_size, table)
+  valid_iterator = make_iterator(valid_dataset, FLAGS.batch_size, table)
+  ptest_iterator = make_iterator(ptest_dataset, FLAGS.batch_size, table)
+  # test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
 
   train_audio, train_labels = train_iterator.get_next()
   valid_audio, valid_labels = valid_iterator.get_next()
   ptest_audio, ptest_labels = ptest_iterator.get_next()
-  test_audio, test_labels = test_iterator.get_next()
+  # test_audio, test_labels = test_iterator.get_next()
 
   train_spectrograms = make_spectrogram(train_audio)
   valid_spectrograms = make_spectrogram(valid_audio)
   ptest_spectrograms = make_spectrogram(ptest_audio)
-  test_spectrograms = make_spectrogram(test_audio)
+  # test_spectrograms = make_spectrogram(test_audio)
 
   sess = tf.Session()
   tf.tables_initializer().run(session=sess)
-  sess.run([i.initializer for i in [train_iterator, valid_iterator, ptest_iterator, test_iterator]])
+  sess.run([i.initializer for i in [train_iterator, valid_iterator, ptest_iterator]])#, test_iterator]])
 
   build_tfrecord(
     train_spectrograms,
@@ -170,13 +170,12 @@ def main():
     os.path.join(dataset_path, 'ptest.tfrecords'),
     len(pseudo_test_files))
 
-  build_tfrecord(
-    test_spectrograms,
-    test_labels,
-    sess,
-    os.path.join(dataset_path, 'test.tfrecords'),
-    len(test_files))
-    
+  # build_tfrecord(
+  #   test_spectrograms,
+  #   test_labels,
+  #   sess,
+  #   os.path.join(dataset_path, 'test.tfrecords'),
+  #   len(test_files))
 
   with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
     f.write(','.join(words))

@@ -21,11 +21,11 @@ def get_input_fn(
           default_value=tf.zeros([], dtype=tf.float32)),
         'label': tf.FixedLenFeature((),
           tf.string,
-          default_value=""))
+          default_value="")
       }
       parsed = tf.parse_single_example(record, features)
       spec = tf.reshape(parsed['spec'], [99, 161, 1])
-      label = tf.string_split(parsed['label'], delimiter="/").values[-2:-1]
+      label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
       label = table.lookup(label)[0]
       label = tf.one_hot(label, len(labels))
       return (spec, label)
