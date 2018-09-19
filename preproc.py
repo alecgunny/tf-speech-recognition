@@ -6,10 +6,9 @@ import argparse
 import multiprocessing as mp
 
 _SAMPLE_RATE = 16000
-_NUM_PARALLEL_CALLS = mp.cpu_count()
-_LOG_EVERY = 1
 
-def read_audio_fn(table):
+
+def get_read_audio_fn(table):
   def read_audio(fname):
     audio_binary = tf.read_file(fname)
     waveform = tf.contrib.ffmpeg.decode_audio(
@@ -44,15 +43,13 @@ def make_spectrogram(dataset):
   return tf.cast(log_magnitude_spectrograms, tf.float32)
 
 
-def make_iterator(filenames, batch_size, table=None):
-  return (tf.data.Dataset.from_tensor_slices(filenames)
-    .apply(
-      tf.contrib.data.map_and_batch(
-        map_func=read_audio_fn(table),
-        batch_size=batch_size,
-        #num_parallel_batches=8,
-        num_parallel_calls=mp.cpu_count()
-    ))
+def make_iterator(dataset, batch_size, table=None):
+  return (dataset.apply(
+    tf.contrib.data.map_and_batch(
+      map_func=get_read_audio_fn(table),
+      batch_size=batch_size,
+      num_parallel_calls=mp.cpu_count())
+    )
     .prefetch(None)
     .make_initializable_iterator()
   )
@@ -78,7 +75,7 @@ def build_tfrecord(
   print("Building tfrecord file {}".format(filename))
   start_time = time.time()
   while True:
-    if dataset_size is not None and batches_processed % _LOG_EVERY == 0:
+    if dataset_size is not None and batches_processed % FLAGS.log_every == 0:
       time_taken = time.time() - start_time
       samples_per_second = samples_processed / time_taken
       zeroes = int(np.ceil(np.log10(dataset_size)))
@@ -127,20 +124,28 @@ def main():
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
 
+  train_files = tf.data.Dataset.from_tensor_slices(train_files)
+  valid_files = tf.data.Dataset.from_tensor_slices(validation_files)
+  ptest_files = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
+  test_files = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
+
   mapping_strings = tf.constant(words)
   table = tf.contrib.lookup.index_table_from_tensor(mapping=mapping_strings)
 
   train_iterator = make_iterator(train_files, FLAGS.batch_size, table)
   valid_iterator = make_iterator(validation_files, FLAGS.batch_size, table)
   ptest_iterator = make_iterator(pseudo_test_files, FLAGS.batch_size, table)
+  test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
 
   train_audio, train_labels = train_iterator.get_next()
   valid_audio, valid_labels = valid_iterator.get_next()
   ptest_audio, ptest_labels = ptest_iterator.get_next()
+  test_audio, empty_test_labels = test_iterator.get_next()
 
   train_spectrograms = make_spectrogram(train_audio)
   valid_spectrograms = make_spectrogram(valid_audio)
   ptest_spectrograms = make_spectrogram(ptest_audio)
+  test_spectrograms = make_spectrogram(test_audio)
 
   sess = tf.Session()
   tf.tables_initializer().run(session=sess)
@@ -167,6 +172,9 @@ def main():
     os.path.join(dataset_path, 'ptest.tfrecords'),
     len(pseudo_test_files))
 
+  build_tfrecord(
+    
+
   with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
     f.write(','.join(words))
 
@@ -186,16 +194,10 @@ if __name__ == '__main__':
     help='number of samples to process at once')
   
   parser.add_argument(
-    '--prefetch',
+    '--log_every',
     type=int,
-    default=3,
-    help='number of samples to prefetch in preproc')
-
-  parser.add_argument(
-    '--num_calls',
-    type=int,
-    default=mp.cpu_count(),
-    help='number of concurrent audio decodes to do in parallel')
+    default=50,
+    help='batches between print logging')
 
   parser.add_argument(
     '--frame_length',
