@@ -103,4 +103,6 @@ if __name__ == '__main__':
     help='learning rate')
 
   FLAGS = parser.parse_args()
+  assert len(FLAGS.hidden_sizes) == 6
+
   main()
