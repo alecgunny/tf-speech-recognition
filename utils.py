@@ -12,10 +12,13 @@ class LoggerHook(tf.train.SessionRunHook):
     self._start_time = time.time()
 
   def before_run(self, run_context):
-    return tf.train.SessionRunArgs(tf.train.get_global_step())
+    return tf.train.SessionRunArgs(fetches=[
+      tf.train.get_global_step(),
+      'loss:0'])
 
   def after_run(self, run_context, run_values):
-    step = run_values.results + 1
+    step, loss = run_values.results
+    step += 1
     if step % self.log_frequency == 0:
       current_time = time.time()
       duration = current_time - self._start_time

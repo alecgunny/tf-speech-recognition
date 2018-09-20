@@ -6,7 +6,7 @@ COPY $API_KEY $KAGGLE_CONFIG_DIR
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends p7zip-full ffmpeg vim && \
-  pip install kaggle pandas && \
+  pip install kaggle pandas tf-nightly-gpu && \
   rm -rf /var/lib/apt/lists/*
 
 VOLUME /data/

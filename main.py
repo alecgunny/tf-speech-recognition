@@ -23,7 +23,7 @@ def main():
   #print(model.summary())
 
   strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=FLAGS.num_gpus)
-  config = tf.estimator.RunConfig(train_distribute=strategy)
+  config = tf.estimator.RunConfig(train_distribute=strategy, save_checkpoints_steps=100)
   custom_objects = {
     'DeepSpeechCell': layers.DeepSpeechCell,
     'ImageToDeepSpeech': layers.ImageToDeepSpeech
@@ -42,14 +42,18 @@ def main():
   eval_input_fn = data_utils.get_input_fn(
     '/data/valid.tfrecords',
     labels,
-    FLAGS.batch_size*4,
+    FLAGS.batch_size*FLAGS.num_gpus*4,
     FLAGS.num_epochs)
 
-  # train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.num_epochs)
-  # eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
-  # tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
-  estimator.train(input_fn=train_input_fn, hooks=hooks)
-  estimator.evaluate(input_fn=eval_input_fn)
+  def accuracy(labels, predictions):
+    return {'accuracy': tf.metrics.accuracy(labels, predictions['labels'])}
+  estimator = tf.contrib.estimator.add_metrics(estimator, accuracy)
+  tf.logging.set_verbosity(tf.logging.INFO)
+  train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.num_epochs*100)
+  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, steps=3, throttle_secs=30, start_delay_secs=10)
+  tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+  # estimator.train(input_fn=train_input_fn, hooks=hooks)
+  # estimator.evaluate(input_fn=eval_input_fn)
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
