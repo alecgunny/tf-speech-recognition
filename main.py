@@ -46,11 +46,13 @@ def main():
     FLAGS.num_epochs)
 
   def accuracy(labels, predictions):
-    return {'accuracy': tf.metrics.accuracy(labels, predictions['labels'])}
+    labels = tf.argmax(labels, axis=1)
+    predictions = tf.argmax(predictions['labels'], axis=1)
+    return {'accuracy': tf.metrics.accuracy(labels, predictions)}
   estimator = tf.contrib.estimator.add_metrics(estimator, accuracy)
   tf.logging.set_verbosity(tf.logging.INFO)
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.num_epochs*100)
-  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, steps=3, throttle_secs=30, start_delay_secs=10)
+  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, steps=3, throttle_secs=30)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   # estimator.train(input_fn=train_input_fn, hooks=hooks)
   # estimator.evaluate(input_fn=eval_input_fn)
