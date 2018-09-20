@@ -24,7 +24,12 @@ def get_input_fn(
           default_value="")
       }
       parsed = tf.parse_single_example(record, features)
-      spec = tf.reshape(parsed['spec'], [99, 161, 1])
+
+      spec = tf.reshape(parsed['spec'], [99, 161])
+      mean, std = tf.nn.moments(spec, axes=[1])
+      spec = (tf.transpose(spec) - mean) / (std + 0.0001)
+      spec = tf.expand_dims(tf.transpose(spec), axis=2)
+
       label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
       label = table.lookup(label)[0]
       label = tf.one_hot(label, len(labels))
