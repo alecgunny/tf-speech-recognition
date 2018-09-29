@@ -20,9 +20,9 @@ def main():
   optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.lr)
   model.compile(optimizer=optimizer, loss='categorical_crossentropy', metric='accuracy')
   hooks = [utils.LoggerHook(100, FLAGS.batch_size*FLAGS.num_gpus)]
-  #print(model.summary())
+  print(model.summary())
 
-  strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=FLAGS.num_gpus)
+  strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=FLAGS.num_gpus, prefetch_on_device=True)
   config = tf.estimator.RunConfig(train_distribute=strategy, save_checkpoints_steps=100)
   custom_objects = {
     'DeepSpeechCell': layers.DeepSpeechCell,
@@ -42,8 +42,8 @@ def main():
   eval_input_fn = data_utils.get_input_fn(
     '/data/valid.tfrecords',
     labels,
-    FLAGS.batch_size*FLAGS.num_gpus*4,
-    FLAGS.num_epochs)
+    FLAGS.batch_size*8,
+    1)
 
   def accuracy(labels, predictions):
     labels = tf.argmax(labels, axis=1)
@@ -52,7 +52,7 @@ def main():
   estimator = tf.contrib.estimator.add_metrics(estimator, accuracy)
   tf.logging.set_verbosity(tf.logging.INFO)
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=FLAGS.num_epochs*100)
-  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, steps=3, throttle_secs=30)
+  eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, throttle_secs=30)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
   # estimator.train(input_fn=train_input_fn, hooks=hooks)
   # estimator.evaluate(input_fn=eval_input_fn)
@@ -109,6 +109,5 @@ if __name__ == '__main__':
     help='learning rate')
 
   FLAGS = parser.parse_args()
-  assert len(FLAGS.hidden_sizes) == 6
 
   main()

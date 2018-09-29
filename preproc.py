@@ -63,7 +63,8 @@ def build_tfrecord(
     label,
     session,
     filename,
-    dataset_size=None):
+    dataset_size=None,
+    save_stats=False):
   writer = tf.python_io.TFRecordWriter(filename)
   samples_processed = 0
   batches_processed = 0
@@ -81,6 +82,12 @@ def build_tfrecord(
 
     try:
       specs, labels = session.run([spectrogram, label])
+      if batches_processed == 0 and save_stats:
+        mean, var = specs.sum(axis=0), (specs**2).sum(axis=0)
+      elif save_stats:
+        mean += specs.sum(axis=0)
+        var +=  (specs**2).sum(axis=0)
+
       for spec, l in zip(specs, labels):
         feature = {
           'spec': _float_feature(spec),
@@ -94,6 +101,13 @@ def build_tfrecord(
       break
 
   writer.close()
+  if save_stats:
+    mean /= samples_processed
+    var /= samples_processed
+
+    dirname = os.path.dirname(filename)
+    np.save(os.path.join(dirname, 'mean.npy'), mean)
+    np.save(os.path.join(dirname, 'var.npy'), std - mean**2)
 
 def main():
   dataset_path = FLAGS.dataset_path
@@ -154,7 +168,8 @@ def main():
     train_labels,
     sess,
     os.path.join(dataset_path, 'train.tfrecords'),
-    len(train_files))
+    len(train_files),
+    save_stats=True)
 
   build_tfrecord(
     valid_spectrograms,
