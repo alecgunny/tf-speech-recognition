@@ -10,5 +10,4 @@ docker run \
   -p 6006:6006 \
   -u $(id -u):$(id -g) \
   $USER/tf-src \
-  jupyter-notebook \
-  --ip=0.0.0.0
+  jupyter notebook --ip=0.0.0.0
