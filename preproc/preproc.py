@@ -86,7 +86,7 @@ def build_tfrecord(
         mean, var = specs.sum(axis=0), (specs**2).sum(axis=0)
       elif save_stats:
         mean += specs.sum(axis=0)
-        var +=  (specs**2).sum(axis=0)
+        var += (specs**2).sum(axis=0)
 
       for spec, l in zip(specs, labels):
         feature = {
@@ -118,7 +118,7 @@ def main():
 
   # our order will go:
   # 1. the 10 words to classify on the test set: test_words
-  # 2. words that aren't one of the test set words but with a "regular" class representation
+  # 2. words that aren't one of the test set words but have a "regular" class representation
   # 3. words that aren't in the test set and are underrepresented in the training set: aux words
   # this will let us to more easily clip labels and train on reduced sets of labels
   words = [word for word in test_words]
