@@ -16,19 +16,19 @@ while true; do
   esac
 done
 
-if [ -z "$HELP" ]; then
+if ! [ -z "$HELP" ]; then
   echo "Build dataset and launch slideshow for training a model on Kaggle TensorFlow Speech Recognition Challenge"
   echo "Parameters"
   echo "----------"
   echo "    -d, --data_dir  : path to data (or where to save data if running preprocessing)"
   echo "    -p, --preproc   : whether to run preprocessing data generation script. If set, notebook won't launch"
   echo "    -h, --help      : show this help"
-  return 0
+  exit 0
 fi
 
 if [ -z "$DATA_DIR" ]; then
   echo "Must specify data directory!"
-  return 1
+  exit 1
 fi
 
 docker run \

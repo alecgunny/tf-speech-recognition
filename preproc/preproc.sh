@@ -6,10 +6,10 @@ fi
 
 cd $DATA_DIR
 if ! [[ -d "$DATA_DIR/train" ]]; then
-  7z train.7z
+  7z x train.7z
 fi
 if ! [[ -d "$DATA_DIR/test" ]]; then
-  7z test.7z
+  7z x test.7z
 fi
 
-python preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50
+python /workspace/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50
