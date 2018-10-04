@@ -116,8 +116,11 @@ def main():
   full_word_list = os.listdir(os.path.join(dataset_path, 'train', 'audio'))
   del full_word_list[full_word_list.index('_background_noise_')]
 
-  # our order will go: words in the test set, train words not in the test set but represented regularly,
-  # then aux words. The order outside of that won't matter
+  # our order will go:
+  # 1. the 10 words to classify on the test set: test_words
+  # 2. words that aren't one of the test set words but with a "regular" class representation
+  # 3. words that aren't in the test set and are underrepresented in the training set: aux words
+  # this will let us to more easily clip labels and train on reduced sets of labels
   words = [word for word in test_words]
   words += [word for word in full_word_list if word not in (aux_words  + test_words)]
   words += aux_words
@@ -125,21 +128,24 @@ def main():
   with open(os.path.join(dataset_path, 'train', 'validation_list.txt'), 'r') as f:
     validation_files = f.read().split("\n")[:-1]
     validation_files = [os.path.join(dataset_path, 'train', 'audio', i) for i in validation_files]
+
   with open(os.path.join(dataset_path, 'train', 'testing_list.txt'), 'r') as f:
     pseudo_test_files = f.read().split("\n")[:-1]
     pseudo_test_files = [os.path.join(dataset_path, 'train', 'audio', i) for i in pseudo_test_files]
+
   train_files = []
   for word in words:
     for fname in os.listdir(os.path.join(dataset_path, 'train', 'audio', word)):
       filename = os.path.join(dataset_path, 'train', 'audio', word, fname)
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
-  # test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
+
+  test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
 
   train_dataset = tf.data.Dataset.from_tensor_slices(train_files)
   valid_dataset = tf.data.Dataset.from_tensor_slices(validation_files)
   ptest_dataset = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
-  # test_dataset = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
+  test_dataset = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
 
   mapping_strings = tf.constant(words)
   table = tf.contrib.lookup.index_table_from_tensor(mapping=mapping_strings)
@@ -147,17 +153,17 @@ def main():
   train_iterator = make_iterator(train_dataset, FLAGS.batch_size, table)
   valid_iterator = make_iterator(valid_dataset, FLAGS.batch_size, table)
   ptest_iterator = make_iterator(ptest_dataset, FLAGS.batch_size, table)
-  # test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
+  test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
 
   train_audio, train_labels = train_iterator.get_next()
   valid_audio, valid_labels = valid_iterator.get_next()
   ptest_audio, ptest_labels = ptest_iterator.get_next()
-  # test_audio, test_labels = test_iterator.get_next()
+  test_audio, test_labels = test_iterator.get_next()
 
   train_spectrograms = make_spectrogram(train_audio)
   valid_spectrograms = make_spectrogram(valid_audio)
   ptest_spectrograms = make_spectrogram(ptest_audio)
-  # test_spectrograms = make_spectrogram(test_audio)
+  test_spectrograms = make_spectrogram(test_audio)
 
   sess = tf.Session()
   tf.tables_initializer().run(session=sess)
@@ -185,12 +191,12 @@ def main():
     os.path.join(dataset_path, 'ptest.tfrecords'),
     len(pseudo_test_files))
 
-  # build_tfrecord(
-  #   test_spectrograms,
-  #   test_labels,
-  #   sess,
-  #   os.path.join(dataset_path, 'test.tfrecords'),
-  #   len(test_files))
+  build_tfrecord(
+    test_spectrograms,
+    test_labels,
+    sess,
+    os.path.join(dataset_path, 'test.tfrecords'),
+    len(test_files))
 
   with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
     f.write(','.join(words))
