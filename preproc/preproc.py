@@ -38,7 +38,7 @@ def make_spectrogram(dataset):
 
 def make_iterator(dataset, batch_size, table=None):
   return (dataset.apply(
-    tf.contrib.data.map_and_batch(
+    tf.data.experimental.map_and_batch(
       map_func=read_audio,
       batch_size=batch_size,
       num_parallel_calls=mp.cpu_count())
@@ -107,7 +107,7 @@ def build_tfrecord(
 
     dirname = os.path.dirname(filename)
     np.save(os.path.join(dirname, 'mean.npy'), mean)
-    np.save(os.path.join(dirname, 'var.npy'), std - mean**2)
+    np.save(os.path.join(dirname, 'var.npy'), var - mean**2)
 
 def main():
   dataset_path = FLAGS.dataset_path
@@ -140,12 +140,9 @@ def main():
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
 
-  test_files = os.listdir(os.path.join(dataset_path, 'test', 'audio'))
-
   train_dataset = tf.data.Dataset.from_tensor_slices(train_files)
   valid_dataset = tf.data.Dataset.from_tensor_slices(validation_files)
   ptest_dataset = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
-  test_dataset = tf.data.Dataset.list_files('{}/audio/*'.format(dataset_path))
 
   mapping_strings = tf.constant(words)
   table = tf.contrib.lookup.index_table_from_tensor(mapping=mapping_strings)
@@ -153,17 +150,14 @@ def main():
   train_iterator = make_iterator(train_dataset, FLAGS.batch_size, table)
   valid_iterator = make_iterator(valid_dataset, FLAGS.batch_size, table)
   ptest_iterator = make_iterator(ptest_dataset, FLAGS.batch_size, table)
-  test_iterator = make_iterator(test_files, FLAGS.batch_size, None)
 
   train_audio, train_labels = train_iterator.get_next()
   valid_audio, valid_labels = valid_iterator.get_next()
   ptest_audio, ptest_labels = ptest_iterator.get_next()
-  test_audio, test_labels = test_iterator.get_next()
 
   train_spectrograms = make_spectrogram(train_audio)
   valid_spectrograms = make_spectrogram(valid_audio)
   ptest_spectrograms = make_spectrogram(ptest_audio)
-  test_spectrograms = make_spectrogram(test_audio)
 
   sess = tf.Session()
   tf.tables_initializer().run(session=sess)
@@ -191,12 +185,17 @@ def main():
     os.path.join(dataset_path, 'ptest.tfrecords'),
     len(pseudo_test_files))
 
-  build_tfrecord(
-    test_spectrograms,
-    test_labels,
-    sess,
-    os.path.join(dataset_path, 'test.tfrecords'),
-    len(test_files))
+  if FLAGS.test:
+    test_dataset = tf.data.Dataset.list_files('{}/test/audio/*'.format(dataset_path))
+    test_iterator = make_iterator(test_dataset, FLAGS.batch_size, None)
+    test_audio, test_labels = test_iterator.get_next()
+    test_spectrograms = make_spectrogram(test_audio)
+    build_tfrecord(
+      test_spectrograms,
+      test_labels,
+      sess,
+      os.path.join(dataset_path, 'test.tfrecords'),
+      len(os.listdir('{}/test/audio/'.format(dataset_path))))
 
   with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
     f.write(','.join(words))
@@ -233,6 +232,11 @@ if __name__ == '__main__':
     type=int,
     default=10,
     help="time between FFT windows in ms")
+
+  parser.add_argument(
+    '--test',
+    action='store_true',
+    help='set flag to preprocess test set')
 
   FLAGS = parser.parse_args()
   main()
