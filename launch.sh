@@ -35,7 +35,6 @@ docker run \
   --rm \
   -it \
   --runtime=nvidia \
-  -e NVIDIA_VISIBLE_DEVICES=0 \
   -v $DATA_DIR:/data \
   -v $PWD:/workspace \
   --workdir /workspace \
