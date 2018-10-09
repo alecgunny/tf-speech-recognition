@@ -23,4 +23,9 @@ if [[ -f "$DATA_DIR/train.7z" ]]; then
   rm $DATA_DIR/train.7z
 fi
 
-python /workspace/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 # --test
+SUBSETS=( train valid ptest ) # test
+for SUBSET in "${SUBSETS[@]}"; do
+  if ! [[ -f "$DATA_DIR/$SUBSET.tfrecords" ]]; then
+    python /workspace/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 --subset $SUBSET
+  fi
+done

@@ -36,18 +36,6 @@ def make_spectrogram(dataset):
   return tf.cast(log_magnitude_spectrograms, tf.float32)
 
 
-def make_iterator(dataset, batch_size, table=None):
-  return (dataset.apply(
-    tf.data.experimental.map_and_batch(
-      map_func=read_audio,
-      batch_size=batch_size,
-      num_parallel_calls=mp.cpu_count())
-    )
-    .prefetch(None)
-    .make_initializable_iterator()
-  )
-
-
 def _bytes_feature(value):
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
@@ -57,57 +45,6 @@ def _float_feature(array):
     array = array.ravel()
   return tf.train.Feature(float_list=tf.train.FloatList(value=array))
 
-
-def build_tfrecord(
-    spectrogram,
-    label,
-    session,
-    filename,
-    dataset_size=None,
-    save_stats=False):
-  writer = tf.python_io.TFRecordWriter(filename)
-  samples_processed = 0
-  batches_processed = 0
-  print("Building tfrecord file {}".format(filename))
-  start_time = time.time()
-  while True:
-    if dataset_size is not None and batches_processed % FLAGS.log_every == 0:
-      time_taken = time.time() - start_time
-      samples_per_second = samples_processed / time_taken
-      zeroes = int(np.ceil(np.log10(dataset_size)))
-      print("{}/{} samples processed; {:0.1f} samples/sec".format(
-        str(samples_processed).zfill(zeroes),
-        dataset_size,
-        samples_per_second))
-
-    try:
-      specs, labels = session.run([spectrogram, label])
-      if batches_processed == 0 and save_stats:
-        mean, var = specs.sum(axis=0), (specs**2).sum(axis=0)
-      elif save_stats:
-        mean += specs.sum(axis=0)
-        var += (specs**2).sum(axis=0)
-
-      for spec, l in zip(specs, labels):
-        feature = {
-          'spec': _float_feature(spec),
-          'label': _bytes_feature(tf.compat.as_bytes(l))
-        }
-        example = tf.train.Example(features=tf.train.Features(feature=feature))
-        writer.write(example.SerializeToString())
-      samples_processed += len(specs)
-      batches_processed += 1
-    except tf.errors.OutOfRangeError:
-      break
-
-  writer.close()
-  if save_stats:
-    mean /= samples_processed
-    var /= samples_processed
-
-    dirname = os.path.dirname(filename)
-    np.save(os.path.join(dirname, 'mean.npy'), mean)
-    np.save(os.path.join(dirname, 'var.npy'), var - mean**2)
 
 def main():
   dataset_path = FLAGS.dataset_path
@@ -125,80 +62,109 @@ def main():
   words += [word for word in full_word_list if word not in (aux_words  + test_words)]
   words += aux_words
 
-  with open(os.path.join(dataset_path, 'train', 'validation_list.txt'), 'r') as f:
+  with open('{}/train/validation_list.txt'.format(dataset_path), 'r') as f:
     validation_files = f.read().split("\n")[:-1]
-    validation_files = [os.path.join(dataset_path, 'train', 'audio', i) for i in validation_files]
+    validation_files = ['{}/train/audio/{}'.format(dataset_path, i) for i in validation_files]
 
-  with open(os.path.join(dataset_path, 'train', 'testing_list.txt'), 'r') as f:
+  with open('{}/train/testing_list.txt'.format(dataset_path), 'r') as f:
     pseudo_test_files = f.read().split("\n")[:-1]
-    pseudo_test_files = [os.path.join(dataset_path, 'train', 'audio', i) for i in pseudo_test_files]
+    pseudo_test_files = ['{}/train/audio/{}'.format(dataset_path, i) for i in pseudo_test_files]
 
   train_files = []
   for word in words:
-    for fname in os.listdir(os.path.join(dataset_path, 'train', 'audio', word)):
-      filename = os.path.join(dataset_path, 'train', 'audio', word, fname)
+    for fname in '{}/train/audio/{}'.format(dataset_path, word):
+      filename = '{}/train/audio/{}/{}'.format(dataset_path, word, fname)
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
 
-  train_dataset = tf.data.Dataset.from_tensor_slices(train_files)
-  valid_dataset = tf.data.Dataset.from_tensor_slices(validation_files)
-  ptest_dataset = tf.data.Dataset.from_tensor_slices(pseudo_test_files)
+  # test_files = os.listdir('{}/test/audio'.format(dataset_path))
 
-  mapping_strings = tf.constant(words)
-  table = tf.contrib.lookup.index_table_from_tensor(mapping=mapping_strings)
+  dataset_files = {
+    'train': train_files,
+    'valid': validation_files,
+    'ptest': pseudo_test_files,
+    # 'test': test_files
+  }[FLAGS.subset]
 
-  train_iterator = make_iterator(train_dataset, FLAGS.batch_size, table)
-  valid_iterator = make_iterator(valid_dataset, FLAGS.batch_size, table)
-  ptest_iterator = make_iterator(ptest_dataset, FLAGS.batch_size, table)
 
-  train_audio, train_labels = train_iterator.get_next()
-  valid_audio, valid_labels = valid_iterator.get_next()
-  ptest_audio, ptest_labels = ptest_iterator.get_next()
+  # build a *SYMBOLIC* representation of our dataset
+  # read audio files, batch them, build spectrograms
+  dataset = tf.data.Dataset.from_tensor_slices(dataset_files)
+  dataset = dataset.apply(
+    tf.data.experimental.map_and_batch(
+      map_func=read_audio,
+      batch_size=FLAGS.batch_size,
+      num_parallel_calls=mp.cpu_count())
+    )
+  dataset = dataset.prefetch(None)
+  iterator = dataset.make_initializable_iterator()
+  audio, labels = iterator.get_next()
+  spectrograms = make_spectrogram(audio)
 
-  train_spectrograms = make_spectrogram(train_audio)
-  valid_spectrograms = make_spectrogram(valid_audio)
-  ptest_spectrograms = make_spectrogram(ptest_audio)
+  # now we'll actually iterate through build the spectrograms
+  # then save them out to a TFRecord file
+  # if we're doing the training set, we'll also save the pixel-wise mean
+  # and variance across all spectrograms and save them out as numpy matrices
+  filename = '{}/{}.tfrecords'.format(dataset_path, FLAGS.subset)
+  writer = tf.python_io.TFRecordWriter(filename)
 
   sess = tf.Session()
-  tf.tables_initializer().run(session=sess)
-  sess.run([i.initializer for i in [train_iterator, valid_iterator, ptest_iterator]])#, test_iterator]])
+  sess.run(iterator.initializer)
 
-  build_tfrecord(
-    train_spectrograms,
-    train_labels,
-    sess,
-    os.path.join(dataset_path, 'train.tfrecords'),
-    len(train_files),
-    save_stats=True)
+  print("Building tfrecord file {}".format(filename))
+  samples_processed = 0
+  batches_processed = 0
+  start_time = time.time()
+  while True:
+    if batches_processed % FLAGS.log_every == 0:
+      time_taken = time.time() - start_time
+      samples_per_second = samples_processed / time_taken
+      zeroes = int(np.ceil(np.log10(len(dataset_files))))
+      print("{}/{} samples processed; {:0.1f} samples/sec".format(
+        str(samples_processed).zfill(zeroes),
+        len(dataset_files),
+        samples_per_second))
 
-  build_tfrecord(
-    valid_spectrograms,
-    valid_labels,
-    sess,
-    os.path.join(dataset_path, 'valid.tfrecords'),
-    len(validation_files))
+    try:
+      # get a batch
+      specs, ls = sess.run([spectrograms, labels])
 
-  build_tfrecord(
-    ptest_spectrograms,
-    ptest_labels,
-    sess,
-    os.path.join(dataset_path, 'ptest.tfrecords'),
-    len(pseudo_test_files))
+      # if training set, update our tally of pixel wise stats
+      if batches_processed == 0 and FLAGS.subset == 'train':
+        mean, var = specs.sum(axis=0), (specs**2).sum(axis=0)
+      elif FLAGS.subset == 'train':
+        mean += specs.sum(axis=0)
+        var += (specs**2).sum(axis=0)
 
-  if FLAGS.test:
-    test_dataset = tf.data.Dataset.list_files('{}/test/audio/*'.format(dataset_path))
-    test_iterator = make_iterator(test_dataset, FLAGS.batch_size, None)
-    test_audio, test_labels = test_iterator.get_next()
-    test_spectrograms = make_spectrogram(test_audio)
-    build_tfrecord(
-      test_spectrograms,
-      test_labels,
-      sess,
-      os.path.join(dataset_path, 'test.tfrecords'),
-      len(os.listdir('{}/test/audio/'.format(dataset_path))))
+      # now loop through each spectrogram and label and add them to TFRecord
+      # as an "example" containing named "features"
+      for spec, l in zip(specs, ls):
+        feature = {
+          'spec': _float_feature(spec),
+          'label': _bytes_feature(tf.compat.as_bytes(l))
+        }
+        example = tf.train.Example(features=tf.train.Features(feature=feature))
+        writer.write(example.SerializeToString())
 
-  with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
-    f.write(','.join(words))
+      samples_processed += len(specs)
+      batches_processed += 1
+
+    # dataset has been exhausted, we're done
+    except tf.errors.OutOfRangeError:
+      break
+  writer.close()
+
+  if FLAGS.subset == 'train':
+    # average out our stats, use $\sigma$ = E[x**2] - E**2[x]
+    mean /= samples_processed
+    var /= samples_processed
+    var -= mean**2
+
+    np.save(os.path.join(dataset_path, 'mean.npy'), mean)
+    np.save(os.path.join(dataset_path, 'var.npy'), var)
+
+    with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
+      f.write(','.join(words))
 
 
 if __name__ == '__main__':
@@ -234,9 +200,9 @@ if __name__ == '__main__':
     help="time between FFT windows in ms")
 
   parser.add_argument(
-    '--test',
-    action='store_true',
-    help='set flag to preprocess test set')
+    '--subset',
+    type=str,
+    help='what subset to preprocess')
 
   FLAGS = parser.parse_args()
   main()
