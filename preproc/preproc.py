@@ -160,8 +160,14 @@ def main():
     var /= samples_processed
     var -= mean**2
 
-    np.save(os.path.join(dataset_path, 'mean.npy'), mean)
-    np.save(os.path.join(dataset_path, 'var.npy'), var)
+    writer = tf.python_io.TFRecordWriter('{}/stats.tfrecords'.format(FLAGS.dataset_path))
+    features = {
+      'mean': _float_feature(mean),
+      'std': _float_feature(std)
+    }
+    example = tf.train.Example(features=tf.train.Features(feature=features))
+    writer.write(examplesSerializeToString())
+    writer.close()
 
     with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
       f.write(','.join(words))

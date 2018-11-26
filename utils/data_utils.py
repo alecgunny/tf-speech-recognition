@@ -10,7 +10,7 @@ def get_stats(stats_path, input_shape=None):
   def parse(record):
     features = {
       'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
-      'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True
+      'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)
     }
     parsed = tf.parse_single_example(record, features)
     mean = tf.reshape(parsed['mean'], input_shape)
