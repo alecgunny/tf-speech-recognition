@@ -63,7 +63,7 @@ def get_input_fn(
             tf.data.experimental.map_and_batch(
                 map_func=parse_spectrogram,
                 batch_size=batch_size,
-                num_parallel_calls=num_cpus))
+                num_parallel_calls=mp.cpu_count()))
         dataset.prefetch(buffer_size=None)
 
         return dataset

@@ -1,9 +1,5 @@
 import tensorflow as tf
-
-from utils import model_utils as model
-from utils import data_utils as data
-from utils import misc_utils as misc
-from utils import parse_utils as parse
+from utils import model_utils, data_utils, misc_utils, parse_utils
 tf.logging.set_verbosity(0)
 
 
@@ -13,8 +9,8 @@ def main():
     labels = labels[:20]
 
   # build and compile a keras model
-  model = deepspeech_model(
-    FLAGS.input_shape,
+  model = model_utils.deepspeech_model(
+    FLAGS.input_shape+(1,),
     FLAGS.num_frames,
     FLAGS.frame_step,
     FLAGS.hidden_sizes,
@@ -32,20 +28,20 @@ def main():
   config = tf.estimator.RunConfig(
     save_summary_steps=FLAGS.log_steps,
     save_checkpoints_secs=FLAGS.eval_throttle_secs,
-    log_step_count=FLAGS.log_steps,
+    log_step_count_steps=FLAGS.log_steps,
     model_dir=FLAGS.model_dir,
     experimental_distribute=strategy)
   custom_objects = {
-    'DeepSpeechCell': model.DeepSpeechCell,
-    'ImageToDeepSpeech': model.ImageToDeepSpeech}
+    'DeepSpeechCell': model_utils.DeepSpeechCell,
+    'ImageToDeepSpeech': model_utils.ImageToDeepSpeech}
   estimator = tf.keras.estimator.model_to_estimator(
     model,
     custom_objects=custom_objects,
     config=config)
 
   # build data input functions
-  mean, var =  data.get_stats(FLAGS.stats, FLAGS.input_shape)
-  train_input_fn = data.get_input_fn(
+  mean, var =  data_utils.get_stats(FLAGS.stats, FLAGS.input_shape)
+  train_input_fn = data_utils.get_input_fn(
     FLAGS.train_data,
     labels,
     FLAGS.input_shape,
@@ -53,7 +49,7 @@ def main():
     num_epochs=FLAGS.num_epochs,
     mean=mean,
     var=var)
-  eval_input_fn = data.get_input_fn(
+  eval_input_fn = data_utils.get_input_fn(
     FLAGS.valid_data,
     labels,
     FLAGS.input_shape,
@@ -63,11 +59,11 @@ def main():
     var=var)
 
   # couple quick utilities
-  hooks = [misc.ThroughputHook(
+  hooks = [misc_utils.ThroughputHook(
     FLAGS.batch_size*FLAGS.num_gpus,
     every_n_steps=FLAGS.log_steps,
     output_dir=estimator.model_dir)]
-  max_steps = misc.get_max_steps(
+  max_steps = misc_utils.get_max_steps(
     num_examples=FLAGS.num_train_examples,
     batch_size=FLAGS.batch_size*FLAGS.num_gpus,
     num_epochs=FLAGS.num_epochs)
@@ -76,14 +72,14 @@ def main():
   train_spec = tf.estimator.TrainSpec(
     input_fn=train_input_fn,
     max_steps=max_steps,
-    hooks=[hook])
+    hooks=hooks)
   eval_spec = tf.estimator.EvalSpec(
     input_fn=eval_input_fn,
-    throttle_secs=EVAL_THROTTLE_SECS)
+    throttle_secs=FLAGS.eval_throttle_secs)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 
 if __name__ == '__main__':
-  FLAGS = parse.parse_args()
+  FLAGS = parse_utils.parse_args()
   main()
 

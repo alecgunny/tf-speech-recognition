@@ -35,23 +35,14 @@ def parse_args():
     "--num_train_examples",
     type=int,
     default=51088,
-    help="Number of examples in training data set. 
-      Helps to make sure the proper number of epochs are iterated through")
+    help="Number of examples in training data set. " + 
+      "Helps to make sure the proper number of epochs are iterated through")
 
   # model args
   parser.add_argument(
     "--num_frames",
     type=int,
     default=7,
-    help="Number of contiguous spectrogram timesteps to concatenate")
-  parser.add_argument(
-    "--frame_step",
-    type=int,
-    default=2,
-    help="Number of timesteps between spectrogram windowing")
-  parser.add_argument(
-    "--hidden_sizes",
-    type=int,
     help="Number of contiguous spectrogram timesteps to concatenate")
   parser.add_argument(
     "--frame_step",

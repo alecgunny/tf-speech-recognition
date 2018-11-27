@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:nightly-gpu-py3
+FROM tensorflow/tensorflow:1.12.0-gpu-py3
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends p7zip-full ffmpeg git vim && \
