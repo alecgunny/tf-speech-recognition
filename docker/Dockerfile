@@ -5,8 +5,6 @@ RUN apt-get update && \
   pip install kaggle pandas && \
   rm -rf /var/lib/apt/lists/*
 
-# Notebook specific installations
-
 #RUN mkdir /work/ && cd /work/ && git clone https://github.com/alecgunny/tf-speech-recognition.git
 
 EXPOSE 8888
@@ -18,4 +16,4 @@ ENV DATA_DIR=/data/ KAGGLE_CONFIG_DIR=/work/.kaggle/
 
 WORKDIR /work 
 
-ENTRYPOINT python main.py
+ENTRYPOINT /work/src/preproc/preproc.sh &&  python /work/src/main.py
