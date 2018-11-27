@@ -166,7 +166,7 @@ def main():
       'std': _float_feature(std)
     }
     example = tf.train.Example(features=tf.train.Features(feature=features))
-    writer.write(examplesSerializeToString())
+    writer.write(example.SerializeToString())
     writer.close()
 
     with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
