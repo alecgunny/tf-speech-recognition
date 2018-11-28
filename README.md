@@ -8,12 +8,45 @@ KAGGLE_CONFIG_DIR=/path/to/api/key/.kaggle/
 MODEL_DIR=/path/to/save/model/
 
 docker build -t $USER/tf-src docker/
-docker run --rm -it --runtime=nvidia -v $DATA_DIR:/data -v $PWD:/work -v $KAGGLE_CONFIG_DIR:/work/.kaggle/ $USER/tf-src /work/src/preproc/preproc.sh
-docker run --rm -it --runtime=nvidia -v $DATA_DIR/data -v $PWD:/work $USER/tf-src python /work/src/main.py
+docker run \
+  --rm \
+  -it \
+  --runtime=nvidia \
+  -v $DATA_DIR:/data \
+  -v $PWD:/work \
+  -v $KAGGLE_CONFIG_DIR:/work/.kaggle/ \
+  $USER/tf-src \
+  /work/src/preproc/preproc.sh
+docker run \
+  --rm \
+  -it \
+  --runtime=nvidia \
+  -v $DATA_DIR/data \
+  -v $PWD:/work \
+  $USER/tf-src \
+  python /work/src/main.py \
+  --stats /data/stats.tfrecords
 ```
 To see  what command line options you can supply, run the last command with `-h` at the end. In particular, if you want to save out the model, or monitor performance with tensorboard, mount your `$MODEL_DIR` into the container and specify the mounted directory:
 ```
-docker run --rm -d --runtime=nvidia -v $DATA_DIR/data -v $PWD:/work -v $MODEL_DIR:/tmp/model $USER/tf-src python /work/src/main.py --model_dir /tmp/model/
-docker run --rm -v $MODEL_DIR:/tmp/model -p 6006:6006 $USER/tf-src tensorboard --logdir=/tmp/model --host=0.0.0.0
+docker run \
+  --rm \
+  -d \
+  --runtime=nvidia \
+  -v $DATA_DIR/data \
+  -v $PWD:/work \
+  -v $MODEL_DIR:/tmp/model \
+  $USER/tf-src \
+  python /work/src/main.py \
+  --stats /data/stats.tfrecords \
+  --model_dir /tmp/model/
+docker run \
+  --rm \
+  -v $MODEL_DIR:/tmp/model \
+  -p 6006:6006 \
+  $USER/tf-src \
+  tensorboard \
+  --logdir=/tmp/model \
+  --host=0.0.0.0
 ```
 Note that right now the test data is not built or preprocessed because I'm having difficulties with the size of the test set on the cluster this is being built on. To build it, just uncomment the appropriate lines in `preproc/preproc.sh`.
