@@ -6,7 +6,7 @@ def get_stats(stats_path, input_shape=None):
   if stats_path is None:
     return None, None
 
-  dataset = tf.data.TFRecordDataset([stats])
+  dataset = tf.data.TFRecordDataset([stats_path])
   def parse(record):
     features = {
       'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),

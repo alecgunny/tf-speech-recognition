@@ -141,14 +141,14 @@ def main():
 
   if FLAGS.subset == 'train':
     # average out our stats, use $\sigma$ = E[x**2] - E**2[x]
-    mean /= samples_processed
-    var /= samples_processed
+    mean /= len(dataset_files)
+    var /= len(dataset_files)
     var -= mean**2
 
     writer = tf.python_io.TFRecordWriter('{}/stats.tfrecords'.format(FLAGS.dataset_path))
     features = {
       'mean': _float_feature(mean),
-      'std': _float_feature(std)
+      'var': _float_feature(var)
     }
     example = tf.train.Example(features=tf.train.Features(feature=features))
     writer.write(example.SerializeToString())

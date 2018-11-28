@@ -21,7 +21,7 @@ docker run \
   --rm \
   -it \
   --runtime=nvidia \
-  -v $DATA_DIR/data \
+  -v $DATA_DIR:/data \
   -v $PWD:/work \
   $USER/tf-src \
   python /work/src/main.py \
@@ -33,7 +33,7 @@ docker run \
   --rm \
   -d \
   --runtime=nvidia \
-  -v $DATA_DIR/data \
+  -v $DATA_DIR:/data \
   -v $PWD:/work \
   -v $MODEL_DIR:/tmp/model \
   $USER/tf-src \
