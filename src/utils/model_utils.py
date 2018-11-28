@@ -109,5 +109,12 @@ def deepspeech_model(
   # produce output
   x = tf.keras.layers.Dropout(dropout, name='dropout_labels')(x)
   x = tf.keras.layers.Dense(num_classes, activation='softmax', name='labels')(x)
-  return tf.keras.Model(inputs=input, outputs=x)
+
+  # since we use custom layers, we need to return these to pass over to the
+  # model_to_estimator function
+  custom_objects = {
+    "ImageToDeepSpeech": ImageToDeepSpeech,
+    "DeepSpeechCell": DeepSpeechCell
+  }
+  return tf.keras.Model(inputs=input, outputs=x), custom_objects
 

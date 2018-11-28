@@ -14,6 +14,4 @@ VOLUME /data/ /work/
 
 ENV DATA_DIR=/data/ KAGGLE_CONFIG_DIR=/work/.kaggle/
 
-WORKDIR /work 
-
-ENTRYPOINT /work/src/preproc/preproc.sh &&  python /work/src/main.py
+WORKDIR /work

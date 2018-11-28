@@ -1,6 +1,5 @@
 import tensorflow as tf
 from utils import model_utils, data_utils, misc_utils, parse_utils
-tf.logging.set_verbosity(0)
 
 
 def main():
@@ -9,7 +8,7 @@ def main():
     labels = labels[:20]
 
   # build and compile a keras model
-  model = model_utils.deepspeech_model(
+  model, custom_objects = model_utils.deepspeech_model(
     FLAGS.input_shape+(1,),
     FLAGS.num_frames,
     FLAGS.frame_step,
@@ -31,9 +30,6 @@ def main():
     log_step_count_steps=FLAGS.log_steps,
     model_dir=FLAGS.model_dir,
     experimental_distribute=strategy)
-  custom_objects = {
-    'DeepSpeechCell': model_utils.DeepSpeechCell,
-    'ImageToDeepSpeech': model_utils.ImageToDeepSpeech}
   estimator = tf.keras.estimator.model_to_estimator(
     model,
     custom_objects=custom_objects,
