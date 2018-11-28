@@ -26,6 +26,6 @@ fi
 SUBSETS=( train valid ptest ) # test
 for SUBSET in "${SUBSETS[@]}"; do
   if ! [[ -f "$DATA_DIR/$SUBSET.tfrecords" ]]; then
-    python /workspace/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 --subset $SUBSET
+    python /work/src/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 --subset $SUBSET
   fi
 done
