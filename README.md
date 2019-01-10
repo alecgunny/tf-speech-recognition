@@ -6,8 +6,8 @@ To build, you'll first need to get the data. This is most easily done using the 
 DATA_DIR=/path/to/data/dir
 KAGGLE_CONFIG_DIR=/path/to/kaggle/json/dir
 
-docker build -t $USER/tf-src .
-docker run --rm --runtime=nvidia -v $DATA_DIR:/data -v $KAGGLE_CONFIG_DIR:/workspace/.kaggle/ -p 8888:8888 -p 6006:6006 $USER/tf-src
+docker build -t $USER/tf-src github.com/alecgunny/tf-speech-recognition
+docker run --rm --runtime=nvidia -v $DATA_DIR:/data -v $KAGGLE_CONFIG_DIR:/tmp/.kaggle/ -p 8888:8888 -p 6006:6006 $USER/tf-src
 ```
 This will build the container, build the dataset inside of it (assuming it needs to be built) and save it on the host to `/path/to/save/data/to`, then launch the jupyter notebook server. You can connect to the server at <your machine's ip>:8888/ and enter the password "nvidia". Then you should be good to launch `Slideshow.ipynb` (consider putting your browser in full screen before you do. This if F11 on Chrome).
 
