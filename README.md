@@ -13,6 +13,6 @@ This will build the tfrecords dataset inside the container and save it on the ho
 docker build -t $USER/tf-src --build-arg tag=18.12-py3 github.com/alecgunny/tf-speech-recognition
 docker run --rm -d --name=tf-src --runtime=nvidia -v $DATA_DIR:/data -p 8888:8888 -p 6006:6006 -u $(id -u):$(id -g) $USER/tf-src
 ```
-You can connect to the server at <your machine's ip>:8888/ and enter the password "nvidia". Then you should be good to launch `Slideshow.ipynb` (consider putting your browser in full screen before you do. This if F11 on Chrome).
+You can connect to the server at `<your machine's ip>:8888/`. Then you should be good to launch `Slideshow.ipynb` (consider putting your browser in full screen before you do. This if F11 on Chrome).
 
-Note that right now the test data is not built or preprocessed because the slideshow only needs training set data and I'm having difficulties with the size of the test set on the cluster this is being built on. To build it, just uncomment the appropriate lines in `preproc/preproc.sh`.
+Note that right now the test data is not built or preprocessed at the moment. To build it, just uncomment the appropriate line in `preproc/preproc.sh`.
