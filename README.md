@@ -13,7 +13,7 @@ This will build the tfrecords dataset inside the container and save it on the ho
 docker build -t $USER/tf-src --build-arg tag=18.12-py3 github.com/alecgunny/tf-speech-recognition
 docker run --rm -d --name=tf-src --runtime=nvidia -v $DATA_DIR:/data -v tensorboard:/tmp/model -p 8888:8888 -u $(id -u):$(id -g) $USER/tf-src
 ```
-You can connect to the notebook at `<your machine's ip>:8888/notebooks/Slideshow.ipynb` (consider putting your browser in full screen before you do. This if F11 on Chrome).
+You can connect to the notebook at `<your machine's ip>:8888/notebooks/Slideshow.ipynb` (consider putting your browser in full screen before you do. This is F11 on Chrome).
 
 If we want to monitor throughput, we can build use the `tensorboard` build target in our Dockerfile and then mount the tensorboard volume we created during the previous `docker run` call (creating a whole new image is probably overkill, but is hopefully illustrative).
 ```
@@ -25,4 +25,4 @@ To clean everything up
 docker kill tf-src tf-src-tensorboard
 docker volume rm tensorboard
 ```
-Note that right now the test data is not built or preprocessed at the moment. To build it, just uncomment the appropriate line in `preproc/preproc.sh`.
+Note that the test data is not built or preprocessed at the moment. To build it, just uncomment the appropriate line in `preproc/preproc.sh`.
