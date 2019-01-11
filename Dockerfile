@@ -51,5 +51,3 @@ ENTRYPOINT /bin/bash -c  "fixuid -q && jupyter notebook --allow-root --ip=0.0.0.
 FROM base as tensorboard
 EXPOSE 6006
 ENTRYPOINT /bin/bash -c "fixuid -q && tensorboard --logdir $MODEL_DIR --host=0.0.0.0"
-
-
