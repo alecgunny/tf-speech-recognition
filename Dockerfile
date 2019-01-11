@@ -4,6 +4,8 @@ ENV DATA_DIR=/data/ KAGGLE_CONFIG_DIR=/tmp/.kaggle/ MODEL_DIR=/tmp/model SHELL=/
 
 # need to install fixuid tool to change ownership of files inside container at runtime
 # first create a docker user and chown relevant directories to it
+# note that the stats saved out by estimator to $MODEL_DIR will be owned by the docker user
+# so our tensorboard container will need this as well
 RUN addgroup --gid 1000 docker && \
     adduser --uid 1000 --ingroup docker --home /home/docker --disabled-password --gecos "" docker && \
     mkdir /.local $MODEL_DIR && \
@@ -17,14 +19,13 @@ RUN USER=docker && \
     mkdir -p /etc/fixuid && \
     printf "user: $USER\ngroup: $GROUP\npaths:\n  - /home/docker\n  - /.local\n  - $MODEL_DIR" > /etc/fixuid/config.yml
 
+# needed to wait to chown $MODEL_DIR before declaring this command
+# because once a volume is created by a VOLUME step, it can't be
+# changed by any subsequent build steps
 VOLUME $DATA_DIR $KAGGLE_CONFIG_DIR $MODEL_DIR
 
-# container for running tensorboard
-FROM base as tensorboard
-EXPOSE 6006
-ENTRYPOINT /bin/bash -c "fixuid -q && tensorboard --logdir $MODEL_DIR --host=0.0.0.0"
-
 # python and jupyter specific installs for main base
+# separated because tensorboard doesn't need these
 FROM base as jupyter
 RUN apt-get update && \
   apt-get install -y --no-install-recommends p7zip-full ffmpeg && \
@@ -45,3 +46,10 @@ ENTRYPOINT /bin/bash -c "fixuid -q && ./preproc/preproc.sh"
 FROM preproc as main
 EXPOSE 8888
 ENTRYPOINT /bin/bash -c  "fixuid -q && jupyter notebook --allow-root --ip=0.0.0.0 --NotebookApp.token=''"
+
+# container for running tensorboard
+FROM base as tensorboard
+EXPOSE 6006
+ENTRYPOINT /bin/bash -c "fixuid -q && tensorboard --logdir $MODEL_DIR --host=0.0.0.0"
+
+
