@@ -1,7 +1,5 @@
 import tensorflow as tf
 import os
-import time
-import numpy as np
 import argparse
 import multiprocessing as mp
 
@@ -47,10 +45,9 @@ def _float_feature(array):
 
 
 def main():
-  dataset_path = FLAGS.dataset_path
   test_words = ["yes", "no", "up", "down", "left", "right", "on", "off", "stop", "go"]
   aux_words = ["bed", "bird", "cat", "dog", "happy", "house", "marvin", "sheila", "tree", "wow"]
-  full_word_list = os.listdir(os.path.join(dataset_path, 'train', 'audio'))
+  full_word_list = os.listdir(os.path.join(FLAGS.dataset_path, 'train', 'audio'))
   del full_word_list[full_word_list.index('_background_noise_')]
 
   # our order will go:
@@ -62,22 +59,22 @@ def main():
   words += [word for word in full_word_list if word not in (aux_words  + test_words)]
   words += aux_words
 
-  with open('{}/train/validation_list.txt'.format(dataset_path), 'r') as f:
+  with open('{}/train/validation_list.txt'.format(FLAGS.dataset_path), 'r') as f:
     validation_files = f.read().split("\n")[:-1]
-    validation_files = ['{}/train/audio/{}'.format(dataset_path, i) for i in validation_files]
+    validation_files = ['{}/train/audio/{}'.format(FLAGS.dataset_path, i) for i in validation_files]
 
-  with open('{}/train/testing_list.txt'.format(dataset_path), 'r') as f:
+  with open('{}/train/testing_list.txt'.format(FLAGS.dataset_path), 'r') as f:
     pseudo_test_files = f.read().split("\n")[:-1]
-    pseudo_test_files = ['{}/train/audio/{}'.format(dataset_path, i) for i in pseudo_test_files]
+    pseudo_test_files = ['{}/train/audio/{}'.format(FLAGS.dataset_path, i) for i in pseudo_test_files]
 
   train_files = []
   for word in words:
-    for fname in '{}/train/audio/{}'.format(dataset_path, word):
-      filename = '{}/train/audio/{}/{}'.format(dataset_path, word, fname)
+    for fname in os.listdir('{}/train/audio/{}'.format(FLAGS.dataset_path, word)):
+      filename = '{}/train/audio/{}/{}'.format(FLAGS.dataset_path, word, fname)
       if filename not in validation_files and filename not in pseudo_test_files:
         train_files.append(filename)
 
-  # test_files = os.listdir('{}/test/audio'.format(dataset_path))
+  # test_files = os.listdir('{}/test/audio'.format(FLAGS.dataset_path))
 
   dataset_files = {
     'train': train_files,
@@ -105,33 +102,24 @@ def main():
   # then save them out to a TFRecord file
   # if we're doing the training set, we'll also save the pixel-wise mean
   # and variance across all spectrograms and save them out as numpy matrices
-  filename = '{}/{}.tfrecords'.format(dataset_path, FLAGS.subset)
+  filename = '{}/{}.tfrecords'.format(FLAGS.dataset_path, FLAGS.subset)
   writer = tf.python_io.TFRecordWriter(filename)
 
   sess = tf.Session()
   sess.run(iterator.initializer)
 
   print("Building tfrecord file {}".format(filename))
-  samples_processed = 0
-  batches_processed = 0
-  start_time = time.time()
+  progbar = tf.keras.utils.Progbar(len(dataset_files))
+  first = True
   while True:
-    if batches_processed % FLAGS.log_every == 0:
-      time_taken = time.time() - start_time
-      samples_per_second = samples_processed / time_taken
-      zeroes = int(np.ceil(np.log10(len(dataset_files))))
-      print("{}/{} samples processed; {:0.1f} samples/sec".format(
-        str(samples_processed).zfill(zeroes),
-        len(dataset_files),
-        samples_per_second))
-
     try:
       # get a batch
       specs, ls = sess.run([spectrograms, labels])
 
       # if training set, update our tally of pixel wise stats
-      if batches_processed == 0 and FLAGS.subset == 'train':
+      if first and FLAGS.subset == 'train':
         mean, var = specs.sum(axis=0), (specs**2).sum(axis=0)
+        first = False
       elif FLAGS.subset == 'train':
         mean += specs.sum(axis=0)
         var += (specs**2).sum(axis=0)
@@ -145,10 +133,7 @@ def main():
         }
         example = tf.train.Example(features=tf.train.Features(feature=feature))
         writer.write(example.SerializeToString())
-
-      samples_processed += len(specs)
-      batches_processed += 1
-
+      progbar.add(len(specs))
     # dataset has been exhausted, we're done
     except tf.errors.OutOfRangeError:
       break
@@ -156,14 +141,20 @@ def main():
 
   if FLAGS.subset == 'train':
     # average out our stats, use $\sigma$ = E[x**2] - E**2[x]
-    mean /= samples_processed
-    var /= samples_processed
+    mean /= len(dataset_files)
+    var /= len(dataset_files)
     var -= mean**2
 
-    np.save(os.path.join(dataset_path, 'mean.npy'), mean)
-    np.save(os.path.join(dataset_path, 'var.npy'), var)
+    writer = tf.python_io.TFRecordWriter('{}/stats.tfrecords'.format(FLAGS.dataset_path))
+    features = {
+      'mean': _float_feature(mean),
+      'var': _float_feature(var)
+    }
+    example = tf.train.Example(features=tf.train.Features(feature=features))
+    writer.write(example.SerializeToString())
+    writer.close()
 
-    with open(os.path.join(dataset_path, 'labels.txt'), 'w') as f:
+    with open(os.path.join(FLAGS.dataset_path, 'labels.txt'), 'w') as f:
       f.write(','.join(words))
 
 
