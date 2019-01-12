@@ -23,7 +23,7 @@ get_data(){
   fi
 
   for s in "${SUBSETS[@]}"; do
-    python /workspace/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 --subset $s
+    python /home/docker/preproc/preproc.py --dataset_path $DATA_DIR --batch_size 4 --log_every 50 --subset $s
   done
 }
 
