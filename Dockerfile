@@ -24,6 +24,11 @@ RUN USER=docker && \
 # changed by any subsequent build steps
 VOLUME $DATA_DIR $KAGGLE_CONFIG_DIR $MODEL_DIR
 
+# auxillary build target for monitoring with tensorboard
+FROM base as tensorboard
+EXPOSE 6006
+ENTRYPOINT /bin/bash -c "fixuid -q && tensorboard --logdir $MODEL_DIR --host=0.0.0.0"
+
 # python and jupyter specific installs for main base
 # separated because tensorboard doesn't need these
 FROM base as jupyter
@@ -46,8 +51,3 @@ ENTRYPOINT /bin/bash -c "fixuid -q && ./preproc/preproc.sh"
 FROM preproc as main
 EXPOSE 8888
 ENTRYPOINT /bin/bash -c  "fixuid -q && jupyter notebook --allow-root --ip=0.0.0.0 --NotebookApp.token=''"
-
-# container for running tensorboard
-FROM base as tensorboard
-EXPOSE 6006
-ENTRYPOINT /bin/bash -c "fixuid -q && tensorboard --logdir $MODEL_DIR --host=0.0.0.0"
