@@ -3,15 +3,16 @@ Jupyter Notebook slideshow overview of solution to <a href="https://www.kaggle.c
 ## Preprocessing
 We'll leverage TensorFlow's TFRecord file format to ingest our data during training. Before we can preprocess our data and save it to a record, we need to save it locally. This is most easily done using the Kaggle command line API. Follow the instructions for getting an API key <a href="https://github.com/Kaggle/kaggle-api">here</a>. Once you have it saved somewhere, you can preprocess with
 ```
-DATA_DIR=/path/to/data
-KAGGLE_CONFIG_DIR=/path/to/kaggle/json
+$ DATA_DIR=/path/to/data
+$ KAGGLE_CONFIG_DIR=/path/to/kaggle/json
 
-docker build \
+$ docker build \
   -t $USER/tf-src:preproc \
   --build-arg tag=18.12-py3 \
   --target preprocess \
   github.com/alecgunny/tf-speech-recognition
-docker run \
+
+$ docker run \
   --rm \
   -it \
   --name=tf-src-preproc \
@@ -26,11 +27,12 @@ This will build the tfrecords dataset inside the container and save it on the ho
 ## Running the slideshow
 Once your datasets are prepared, build and launch the jupyter notebook server with
 ```
-docker build \
+$ docker build \
   -t $USER/tf-src \
   --build-arg tag=18.12-py3 \
   github.com/alecgunny/tf-speech-recognition
-docker run \
+
+$ docker run \
   --rm \
   -d \
   --name=tf-src \
@@ -46,12 +48,13 @@ You can connect to the notebook at `<your machine's ip>:8888/notebooks/Slideshow
 ## Monitoring
 To monitor the impact of changes in the slideshow code on throughput and accuracy, we can use the `tensorboard` build target in our Dockerfile and then run it with the tensorboard volume we created during the previous `docker run` call mounted into the container (creating a whole new image is probably overkill, but is hopefully illustrative).
 ```
-docker build \
+$ docker build \
   -t $USER/tf-src:tensorboard \
   --build-arg tag=18.12-py3 \
   --target tensorboard \
   github.com/alecgunny/tf-speech-recognition
-docker run \
+
+$ docker run \
   --rm \
   -d \
   --name=tf-src-tensorboard \
@@ -64,7 +67,7 @@ docker run \
 
 ## Clean up
 ```
-docker kill tf-src tf-src-tensorboard
-docker volume rm tensorboard
+$ docker kill tf-src tf-src-tensorboard
+$ docker volume rm tensorboard
 ```
 Note that the test data is not built or preprocessed at the moment. To build it, just uncomment the appropriate line in `preproc/preproc.sh`.
