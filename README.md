@@ -1,7 +1,7 @@
 Jupyter Notebook slideshow overview of solution to <a href="https://www.kaggle.com/c/tensorflow-speech-recognition-challenge">Kaggle TensorFlow Speech Recognition Challenge</a>. Leverages a custom recurrent model based off of the model outlined in Baidu's <a href="https://arxiv.org/abs/1412.5567">Deep Speech</a> paper. Meant to demonstrate the tips and tricks to most fully utilize TensorFlow on GPUs for DL research.
 
 ## Preprocessing
-We'll leverage TensorFlow's TFRecord file format to ingest our data during training. Before we can preprocess our data and save it to a record, we need to save it locally. This is most easily done using the Kaggle command line API. Follow the instructions for getting an API key <a href="https://github.com/Kaggle/kaggle-api">here</a>. Once you have it saved somewhere, you can preprocess with
+We'll leverage TensorFlow's TFRecord file format to ingest our data during training. Before we can preprocess our data and save it to a record, we need to save it locally. This is most easily done using the Kaggle command line API. Follow the instructions for getting an API key <a href="https://github.com/Kaggle/kaggle-api">here</a>. Once you have your API key json file saved in `/path/to/kaggle/json`, you can preprocess with
 ```
 $ DATA_DIR=/path/to/data
 $ KAGGLE_CONFIG_DIR=/path/to/kaggle/json
@@ -22,7 +22,7 @@ $ docker run \
   -u $(id -u):$(id -g) \
   $USER/tf-src:preproc
 ```
-This will build the tfrecords dataset inside the container and save it on the host at `$DATA_DIR`.
+This will pull the data from kaggle, build the tfrecords dataset, and save it on the host at `$DATA_DIR`.
 
 ## Running the slideshow
 Once your datasets are prepared, build and launch the jupyter notebook server with
