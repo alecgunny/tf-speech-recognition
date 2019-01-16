@@ -114,7 +114,7 @@ def main():
   while True:
     try:
       # get a batch
-      specs, ls = sess.run([spectrograms, labels])
+      specs, labs = sess.run([spectrograms, labels])
 
       # if training set, update our tally of pixel wise stats
       if first and FLAGS.subset == 'train':
@@ -126,10 +126,10 @@ def main():
 
       # now loop through each spectrogram and label and add them to TFRecord
       # as an "example" containing named "features"
-      for spec, l in zip(specs, ls):
+      for spectrogram, label in zip(specs, labs):
         feature = {
-          'spec': _float_feature(spec),
-          'label': _bytes_feature(tf.compat.as_bytes(l))
+          'spec': _float_feature(spectrogram),
+          'label': _bytes_feature(tf.compat.as_bytes("/".join(label.split("/")[-2:])))
         }
         example = tf.train.Example(features=tf.train.Features(feature=feature))
         writer.write(example.SerializeToString())
@@ -163,7 +163,7 @@ if __name__ == '__main__':
   parser.add_argument(
     '--dataset_path',
     type=str,
-    default='/data/',
+    default='/data',
     help='path to data')
 
   parser.add_argument(
