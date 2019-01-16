@@ -4,8 +4,6 @@ ENV DATA_DIR=/data KAGGLE_CONFIG_DIR=/tmp/.kaggle MODEL_DIR=/tmp/model SHELL=/bi
 
 # need to install fixuid tool to change ownership of files inside container at runtime
 # first create a docker user and chown relevant directories to it
-# note that the stats saved out by estimator to $MODEL_DIR will be owned by the docker user
-# so our tensorboard container will need this as well
 RUN addgroup --gid 1000 docker && \
     adduser --uid 1000 --ingroup docker --home /home/docker --disabled-password --gecos "" docker && \
     mkdir /.local $MODEL_DIR && \
@@ -24,6 +22,7 @@ RUN USER=docker && \
 # changed by any subsequent build steps
 VOLUME $DATA_DIR $KAGGLE_CONFIG_DIR $MODEL_DIR
 
+# going a little overboard on build targets for illustrative purposes
 # auxillary build target for monitoring with tensorboard
 FROM base as tensorboard
 EXPOSE 6006
@@ -39,15 +38,17 @@ RUN apt-get update && \
   jupyter nbextension install rise --py --sys-prefix && \
   jupyter nbextension enable splitcell/splitcell --sys-prefix && \
   rm -rf /var/lib/apt/lists/*
+WORKDIR /home/docker
+USER docker:docker
 
 # preprocessing container
 FROM jupyter as preproc
-COPY --chown=docker:docker . /home/docker
-WORKDIR /home/docker
-USER docker:docker
+COPY --chown=docker:docker preproc /home/docker/preproc/
 ENTRYPOINT /bin/bash -c "fixuid -q && ./preproc/preproc.sh"
 
 # notebook container
 FROM preproc as main
+RUN rm -r /home/docker/preproc
+COPY --chown=docker:docker img Slideshow.ipynb /home/docker/
 EXPOSE 8888
 ENTRYPOINT /bin/bash -c  "fixuid -q && jupyter notebook --allow-root --ip=0.0.0.0 --NotebookApp.token=''"
