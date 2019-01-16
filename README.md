@@ -46,7 +46,7 @@ $ docker run \
 You can connect to the notebook at `<your machine's ip>:8888/notebooks/Slideshow.ipynb` (consider putting your browser in full screen before you do. This is F11 on Chrome).
 
 ## Monitoring
-To monitor the impact of changes in the slideshow code on throughput and accuracy, we can use the `tensorboard` build target in our Dockerfile and then run it with the tensorboard volume we created during the previous `docker run` call mounted into the container (creating a whole new image is probably overkill, but is hopefully illustrative).
+Note that we created a `tensorboard` volume where we will save our model checkpoints and training statistics. (To verify, try running `docker volume ls`.) We can mount this volume to the `tensorboard` build target in our Dockerfile to observe the impact of changes in our notebook on throughput and accuracy. (A separate container and image for this use case is massive overkill, but is hopefully illustrative for the use of build targets and volumes).
 ```
 $ docker build \
   -t $USER/tf-src:tensorboard \
