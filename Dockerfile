@@ -1,6 +1,6 @@
 ARG tag=18.12-py3
 FROM nvcr.io/nvidia/tensorflow:$tag as base
-ENV DATA_DIR=/data/ KAGGLE_CONFIG_DIR=/tmp/.kaggle/ MODEL_DIR=/tmp/model SHELL=/bin/bash
+ENV DATA_DIR=/data KAGGLE_CONFIG_DIR=/tmp/.kaggle MODEL_DIR=/tmp/model SHELL=/bin/bash
 
 # need to install fixuid tool to change ownership of files inside container at runtime
 # first create a docker user and chown relevant directories to it

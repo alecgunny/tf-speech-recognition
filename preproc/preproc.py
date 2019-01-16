@@ -129,7 +129,7 @@ def main():
       for spectrogram, label in zip(specs, labs):
         feature = {
           'spec': _float_feature(spectrogram),
-          'label': _bytes_feature(tf.compat.as_bytes("/".join(label.split("/")[-2:])))
+          'label': _bytes_feature(b"/".join(label.split(b"/")[-2:]))
         }
         example = tf.train.Example(features=tf.train.Features(feature=feature))
         writer.write(example.SerializeToString())
