@@ -9,7 +9,7 @@ $ KAGGLE_CONFIG_DIR=/path/to/kaggle/json
 $ docker build \
   -t $USER/tf-src:preproc \
   --build-arg tag=18.12-py3 \
-  --target preprocess \
+  --target preproc \
   github.com/alecgunny/tf-speech-recognition
 
 $ docker run \
