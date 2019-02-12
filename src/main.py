@@ -1,31 +1,18 @@
 import tensorflow as tf
 import multiprocessing as mp
 import argparse
+import subprocess
 
 
 _SAMPLE_RATE = 16000
-
-
-class ThroughputHook(tf.train.StepCounterHook):
-  def __init__(self, batch_size, **kwargs):
-    self.batch_size = batch_size
-    super(ThroughputHook, self).__init__(**kwargs)
-
-  def begin(self):
-     super(ThroughputHook, self).begin()
-    self._summary_tag = 'throughput'
-
-  def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
-    super(ThroughputHook, self)._log_and_record(
-      elapsed_steps*self.batch_size,
-      elapsed_time,
-      global_step)
+_FRAME_LENGTH = 20
+_FRAME_STEP = 10
 
 
 # TODO: add frame_length and frame_step flags
 def make_spectrogram(audio):
-  frame_length = FLAGS.frame_length * _SAMPLE_RATE // 1e3
-  frame_step = FLAGS.frame_step * _SAMPLE_RATE // 1e3
+  frame_length = _FRAME_LENGTH * _SAMPLE_RATE // 1e3
+  frame_step = _FRAME_STEP * _SAMPLE_RATE // 1e3
   stfts = tf.contrib.signal.stft(
     audio,
     frame_length=tf.cast(frame_length, tf.int32),
@@ -40,7 +27,7 @@ def make_spectrogram(audio):
 # TODO: default input and output names when using keras?
 def serving_input_receiver_fn():
   audio_input_placeholder = tf.placeholder(
-    dtype=tf.float32,
+    dtype=tf.float32, # TODO: proper type?
     shape=[-1, _SAMPLE_RATE]
     name='audio_input')
   receiver_tensors = {'audio_input': audio_input_placeholder}
@@ -48,29 +35,20 @@ def serving_input_receiver_fn():
   return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
 
 
-def input_fn(
-    dataset_path,
-    labels,
-    batch_size,
-    num_epochs,
-    input_shape,
-    stats=None,
-    eps=0.0001,
-    buffer_size=50000):
-  dataset = tf.data.TFRecordDataset([dataset_path])
-  table = tf.contrib.lookup.index_table_from_tensor(
-    mapping=tf.constant(labels),
-    num_oov_buckets=1)
+def load_stats(stats):
+  iterator = tf.python_io.tf_record_iterator(stats)
+  features = {
+    'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
+    'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)}
+  parsed = tf.parse_single_example(next(iterator), features)
+  mean = tf.reshape(parsed['mean'], input_shape)
+  std = tf.reshape(parsed['var']**0.5, input_shape) # square rooting the variance
+  return mean, std
 
-  # load in pixel wise mean and variance
+
+def get_parse_fn(table, stats=None):
   if stats is not None:
-    iterator = tf.python_io.tf_record_iterator(stats)
-    features = {
-      'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
-      'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)}
-    parsed = tf.parse_single_example(next(iterator), features)
-    mean = tf.reshape(parsed['mean'], input_shape)
-    std = tf.reshape(parsed['var']**0.5, input_shape) # square rooting the variance
+     mean, std = load_stats(stats)
 
   def parse_spectrogram(record):
     features = {
@@ -87,15 +65,32 @@ def input_fn(
     label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
     label = table.lookup(label)[0]
     label = tf.one_hot(label, len(labels)+1)
-    return (spec, label)
+    return spec, label
+  return parse_spectrogram
 
+
+def input_fn(
+    dataset_path,
+    labels,
+    batch_size,
+    num_epochs,
+    input_shape,
+    stats=None,
+    eps=0.0001,
+    buffer_size=50000):
+  dataset = tf.data.TFRecordDataset([dataset_path])
+  table = tf.contrib.lookup.index_table_from_tensor(
+    mapping=tf.constant(labels),
+    num_oov_buckets=1)
+
+  parse_spectrogram = get_parse_fn(table, stats=stats)
   dataset = dataset.apply(
     tf.data.experimental.shuffle_and_repeat(buffer_size, num_epochs))
   dataset = dataset.apply(
-      tf.data.experimental.map_and_batch(
-        map_func=parse_spectrogram,
-        batch_size=batch_size,
-        num_parallel_calls=num_cpus))
+    tf.data.experimental.map_and_batch(
+      map_func=parse_spectrogram,
+      batch_size=batch_size,
+      num_parallel_calls=num_cpus))
   dataset.prefetch(buffer_size=None) # tf.data.experimental.AUTOTUNE)
   return dataset
 
@@ -105,6 +100,7 @@ def main():
     labels = f.read().split(",")
     labels = labels[:20]
 
+  # build and compile a keras model then convert it to an estimator
   model = tf.keras.applications.ResNet50(input_shape=FLAGS.input_shape, classes=len(labels)+1)
   optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
   model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['categorical_accuracy'])
@@ -115,12 +111,14 @@ def main():
     save_summary_steps=log_steps,
     save_checkpoints_secs=eval_throttle_secs,
     log_step_count_steps=log_steps,
+    tf_random_seed=0,
+    model_dir='/tensorboard',
     train_distribute=tf.contrib.distribute.MirroredStrategy(
       num_gpus=FLAGS.num_gpus,
       prefetch_on_device=True))
   estimator = tf.keras.estimator.model_to_estimator(model, config=config)
 
-  hooks = [ThroughputHook(effective_batch_size, every_n_steps=log_steps, output_dir=estimator.model_dir)]
+  # train our estimator with data from our input_fn
   train_spec = tf.estimator.TrainSpec(
     input_fn=lambda : input_fn(
       FLAGS.train_data,
@@ -130,8 +128,7 @@ def main():
       FLAGS.input_shape,
       stats=FLAGS.pixel_wise_stats),
     max_steps=max_steps,
-    export_outputs={model.output.name: tf.estimator.export.ClassificationOutput},
-    hooks=hooks)
+    export_outputs={model.output.name: tf.estimator.export.ClassificationOutput})
   eval_spec = tf.estimator.EvalSpec(
     input_fn=lambda : input_fn(
       FLAGS.valid_data,
@@ -142,10 +139,14 @@ def main():
       stats=FLAGS.pixel_wise_stats),
     throttle_secs=eval_throttle_secs)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+
+  # export our model as a tf saved_model that takes raw audio as input
+  saved_model_path = '{}/{}/{}'.format(FLAGS.output_dir, FLAGS.model_name, FLAGS.model_version)
   estimator.export_saved_model(
-    '{}/{}/{}'.format(FLAGS.output_dir, FLAGS.model_name, FLAGS.model_version),
+    saved_model_path,
     serving_input_receiver_fn)
-    
+  subprocess.call("mv {}/$(ls {}) {}/model.savedmodel", shell=True)
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
