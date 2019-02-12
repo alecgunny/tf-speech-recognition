@@ -1,4 +1,5 @@
 #!/bin/bash
+TF_IMAGE=$USER/tf-speech-recognition
 DATASET_PATH=/datasets/agunny/speech-recognition
 
 docker volume create modelstore
@@ -11,7 +12,7 @@ docker run \
   -v tensorboard:/tensorboard \
   --name tensorboard \
   -p 6006:6006 \
-  nvcr.io/nvidia/tensorflow:19.01-py3 \
+  $TF_IMAGE \
   tensorboard \
   --logdir=/tensorboard \
   --host=0.0.0.0
@@ -25,7 +26,7 @@ docker run \
   -v tensorboard:/tensorboard \
   -v $DATASET_PATH:/data \
   --name tf-speech-recognition \
-  nvcr.io/nvidia/tensorflow:19.01-py3 \
+  $TF_IMAGE \
   python main.py \
   --train_data /data/train.tfrecords \
   --valid_data /data/valid.tfrecords \

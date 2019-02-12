@@ -2,6 +2,7 @@ import tensorflow as tf
 import multiprocessing as mp
 import argparse
 import subprocess
+import os
 
 
 _SAMPLE_RATE = 16000
@@ -112,7 +113,7 @@ def main():
     save_checkpoints_secs=eval_throttle_secs,
     log_step_count_steps=log_steps,
     tf_random_seed=0,
-    model_dir='/tensorboard',
+    model_dir=os.environ.get('TENSORBOARD'),
     train_distribute=tf.contrib.distribute.MirroredStrategy(
       num_gpus=FLAGS.num_gpus,
       prefetch_on_device=True))
@@ -141,7 +142,7 @@ def main():
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
   # export our model as a tf saved_model that takes raw audio as input
-  saved_model_path = '{}/{}/{}'.format(FLAGS.output_dir, FLAGS.model_name, FLAGS.model_version)
+  saved_model_path = '{}/{}/{}'.format(os.environ.get('MODEL_STORE'), FLAGS.model_name, FLAGS.model_version)
   estimator.export_saved_model(
     saved_model_path,
     serving_input_receiver_fn)
