@@ -33,20 +33,26 @@ docker run \
   --pixel_wise_stats /data/stats.tfrecords \
   --labels /data/labels.txt \
   --input_shape 99 161 \
-  --learning_rate 2e-5 \
+  --learning_rate 2e-7 \
   --batch_size 512 \
-  --num_epochs 10 \
-  --output_dir /modelstore \
-  --model_name /my_tf_model \
+  --num_epochs 1 \
+  --num_gpus 4 \
+  --model_store_dir /modelstore \
+  --model_name my_tf_model \
   --model_version 0
 
 docker run \
   --rm \
-  -d \
+  -it \
   --runtime nvidia \
   -v modelstore:/modelstore \
   -p 8000-8002:8000-8002 \
+  -e NVIDIA_VISIBLE_DEVICES=0 \
   --name trtserver \
-  nvcr.io/nvidia/tensorrt-inference-server:19.01-py3 \
+  nvcr.io/nvidia/tensorrtserver:19.01-py3 \
   trtserver \
-  --model_store /modelstore
+  --model-store=/modelstore \
+  --strict-model-config=false
+
+# docker kill tensorboard
+# docker volume rm tensorboard modelstore

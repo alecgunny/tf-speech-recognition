@@ -1,16 +1,89 @@
 import tensorflow as tf
+import model_config_pb2
 import multiprocessing as mp
 import argparse
-import subprocess
+import shutil
 import os
 
 
 _SAMPLE_RATE = 16000
 _FRAME_LENGTH = 20
 _FRAME_STEP = 10
+_EPS = 0.0001
 
 
-# TODO: add frame_length and frame_step flags
+def soft_makedirs(dir):
+  if not os.path.exists(dir):
+    os.makedirs(dir)
+
+
+def export_config(
+    model_store_dir,
+    model_name,
+    max_batch_size,
+    output_node_name,
+    labels,
+    count):
+  model_config = model_config_pb2.ModelConfig()
+  model_config.name = model_name
+  model_config.max_batch_size = max_batch_size
+  model_config.platform = 'tensorflow_savedmodel'
+
+  model_input = model_config.input.add()
+  model_input.name = 'audio_input'
+  model_input.data_type = model_config_pb2.TYPE_FP32
+  model_input.dims.append(_SAMPLE_RATE)
+
+  model_output = model_config.output.add()
+  model_output.name = output_node_name
+  model_output.data_type = model_config_pb2.TYPE_FP32
+  model_output.dims.append(len(labels)+1)
+  model_output.label_filename = 'labels.txt'
+
+  instance_group = model_config.instance_group.add()
+  instance_group.count = count
+
+  config_export_path = '{}/{}/config.pbtxt'.format(
+    model_store_dir,
+    model_name)
+  print('Exporting model config to {}'.format(config_export_path))
+  with tf.gfile.GFile(config_export_path, 'wb') as f:
+    f.write(str(model_config))
+
+  labels_export_path = '{}/{}/{}'.format(
+    model_store_dir,
+    model_name,
+    model_config.output[0].label_filename)
+  print('Exporting label file to {}'.format(labels_export_path))
+  with tf.gfile.GFile(labels_export_path, 'w') as f:
+    for label in labels:
+      f.write(label+"\n")
+    f.write('unknown')
+
+
+def export_as_saved_model(
+    estimator,
+    model_store_dir,
+    model_name,
+    model_version,
+    stats=None,
+    spec_shape=None):
+  export_dir = '{}/{}/{}'.format(model_store_dir, model_name, model_version)
+  soft_makedirs(export_dir)
+
+  estimator.export_saved_model(
+    export_dir,
+    lambda : serving_input_receiver_fn(stats=stats, spec_shape=spec_shape))
+
+  # estimator API creates a timestamped dir by default
+  # need to change this to the preferred naming nomenclature
+  timestamp = os.listdir(export_dir)[0]
+  print('Exporting saved_model to {}/model.savedmodel'.format(export_dir))
+  shutil.move(
+    '{}/{}'.format(export_dir, timestamp),
+    '{}/{}'.format(export_dir, 'model.savedmodel'))
+
+
 def make_spectrogram(audio):
   frame_length = _FRAME_LENGTH * _SAMPLE_RATE // 1e3
   frame_step = _FRAME_STEP * _SAMPLE_RATE // 1e3
@@ -25,19 +98,27 @@ def make_spectrogram(audio):
   return tf.cast(log_magnitude_spectrograms, tf.float32)
 
 
-# TODO: default input and output names when using keras?
-def serving_input_receiver_fn():
+def serving_input_receiver_fn(stats=None, spec_shape=None, eps=_EPS):
+  if stats is not None:
+    shift, scale = load_stats(stats, spec_shape)
+
   audio_input_placeholder = tf.placeholder(
-    dtype=tf.float32, # TODO: proper type?
-    shape=[-1, _SAMPLE_RATE]
+    dtype=tf.float32,
+    shape=[None, _SAMPLE_RATE],
     name='audio_input')
   receiver_tensors = {'audio_input': audio_input_placeholder}
-  features = {'input': make_spectrogram(audio_input_placeholder)}
+
+  spectrogram = make_spectrogram(audio_input_placeholder)
+  if stats is not None:
+    spectrogram = (spectrogram - shift) / (scale + eps)
+
+  spectrogram = tf.expand_dims(spectrogram, axis=-1)
+  features = {'input_1': spectrogram}
   return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
 
 
-def load_stats(stats):
-  iterator = tf.python_io.tf_record_iterator(stats)
+def load_stats(stats_path, input_shape):
+  iterator = tf.python_io.tf_record_iterator(stats_path)
   features = {
     'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
     'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)}
@@ -47,9 +128,9 @@ def load_stats(stats):
   return mean, std
 
 
-def get_parse_fn(table, stats=None):
+def get_parse_fn(table, input_shape, labels, stats=None, eps=_EPS):
   if stats is not None:
-     mean, std = load_stats(stats)
+    shift, scale = load_stats(stats, input_shape)
 
   def parse_spectrogram(record):
     features = {
@@ -60,7 +141,7 @@ def get_parse_fn(table, stats=None):
     # preprocess and normalize spectrogrm
     spec = tf.reshape(parsed['spec'], input_shape) # Time steps x Frequency bins
     if stats is not None:
-      spec = (spec - mean) / (std + eps)
+      spec = (spec - shift) / (scale + eps) 
     spec = tf.expand_dims(spec, axis=2) # add channel dimension, T x F x 1
 
     label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
@@ -77,43 +158,44 @@ def input_fn(
     num_epochs,
     input_shape,
     stats=None,
-    eps=0.0001,
+    eps=_EPS,
     buffer_size=50000):
   dataset = tf.data.TFRecordDataset([dataset_path])
   table = tf.contrib.lookup.index_table_from_tensor(
     mapping=tf.constant(labels),
     num_oov_buckets=1)
 
-  parse_spectrogram = get_parse_fn(table, stats=stats)
+  parse_spectrogram = get_parse_fn(table, input_shape, labels, stats=stats, eps=eps)
   dataset = dataset.apply(
     tf.data.experimental.shuffle_and_repeat(buffer_size, num_epochs))
   dataset = dataset.apply(
     tf.data.experimental.map_and_batch(
       map_func=parse_spectrogram,
       batch_size=batch_size,
-      num_parallel_calls=num_cpus))
+      num_parallel_calls=mp.cpu_count()))
   dataset.prefetch(buffer_size=None) # tf.data.experimental.AUTOTUNE)
   return dataset
 
 
-def main():
+def main(FLAGS):
   with open(FLAGS.labels, 'r') as f:
     labels = f.read().split(",")
     labels = labels[:20]
 
   # build and compile a keras model then convert it to an estimator
-  model = tf.keras.applications.ResNet50(input_shape=FLAGS.input_shape, classes=len(labels)+1)
+  input_shape = tuple(FLAGS.input_shape) + (1,)
+  model = tf.keras.applications.ResNet50(input_shape=input_shape, classes=len(labels)+1, weights=None)
   optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
   model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['categorical_accuracy'])
-  print('Training for {} steps'.format(max_steps))
+  print('Training for {} steps'.format(FLAGS.max_steps))
   print(model.summary())
 
   config = tf.estimator.RunConfig(
-    save_summary_steps=log_steps,
-    save_checkpoints_secs=eval_throttle_secs,
-    log_step_count_steps=log_steps,
+    save_summary_steps=FLAGS.log_steps,
+    save_checkpoints_secs=FLAGS.eval_throttle_secs,
+    log_step_count_steps=FLAGS.log_steps,
     tf_random_seed=0,
-    model_dir=os.environ.get('TENSORBOARD'),
+    model_dir=FLAGS.tensorboard_dir,
     train_distribute=tf.contrib.distribute.MirroredStrategy(
       num_gpus=FLAGS.num_gpus,
       prefetch_on_device=True))
@@ -128,8 +210,7 @@ def main():
       FLAGS.num_epochs,
       FLAGS.input_shape,
       stats=FLAGS.pixel_wise_stats),
-    max_steps=max_steps,
-    export_outputs={model.output.name: tf.estimator.export.ClassificationOutput})
+    max_steps=FLAGS.max_steps) 
   eval_spec = tf.estimator.EvalSpec(
     input_fn=lambda : input_fn(
       FLAGS.valid_data,
@@ -138,15 +219,26 @@ def main():
       1,
       FLAGS.input_shape,
       stats=FLAGS.pixel_wise_stats),
-    throttle_secs=eval_throttle_secs)
+    throttle_secs=FLAGS.eval_throttle_secs)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
-  # export our model as a tf saved_model that takes raw audio as input
-  saved_model_path = '{}/{}/{}'.format(os.environ.get('MODEL_STORE'), FLAGS.model_name, FLAGS.model_version)
-  estimator.export_saved_model(
-    saved_model_path,
-    serving_input_receiver_fn)
-  subprocess.call("mv {}/$(ls {}) {}/model.savedmodel", shell=True)
+  # export our model
+  export_as_saved_model(
+    estimator,
+    FLAGS.model_store_dir,
+    FLAGS.model_name,
+    FLAGS.model_version,
+    stats=FLAGS.pixel_wise_stats,
+    spec_shape=FLAGS.input_shape)
+
+  # export config.pbtxt for trtis model store
+  export_config(
+    FLAGS.model_store_dir,
+    FLAGS.model_name,
+    FLAGS.max_batch_size,
+    model.output.name.split("/")[0],
+    labels,
+    FLAGS.count)
 
 
 if __name__ == '__main__':
@@ -191,9 +283,13 @@ if __name__ == '__main__':
     default=25)
 
   parser.add_argument(
-    '--output_dir',
+    '--tensorboard_dir',
     type=str,
-    default='/modelstore')
+    default=os.environ.get('TENSORBOARD'))
+  parser.add_argument(
+    '--model_store_dir',
+    type=str,
+    default=os.environ.get('MODELSTORE'))
   parser.add_argument(
     '--model_name',
     type=str,
@@ -202,15 +298,27 @@ if __name__ == '__main__':
     '--model_version',
     type=int,
     default=0)
+  parser.add_argument(
+    '--max_batch_size',
+    type=int,
+    default=8)
+  parser.add_argument(
+    '--count',
+    type=int,
+    default=1)
+  parser.add_argument(
+    '--eval_throttle_secs',
+    type=int,
+    default=60)
+  parser.add_argument(
+    '--log_steps',
+    type=int,
+    default=2)
 
   FLAGS = parser.parse_args()
 
-  record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
-  num_train_samples = len([record for record in record_iterator])
+  # record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
+  num_train_samples = 51088 #len([record for record in record_iterator])
   effective_batch_size = FLAGS.batch_size * FLAGS.num_gpus
-  max_steps = FLAGS.num_epochs*num_train_sampls // (effective_batch_size)
-  eval_throttle_secs = 120
-  log_steps = 10
-
-  main()
-
+  FLAGS.max_steps = FLAGS.num_epochs*num_train_samples // (effective_batch_size)
+  main(FLAGS)
