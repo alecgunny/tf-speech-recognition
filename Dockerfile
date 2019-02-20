@@ -1,5 +1,8 @@
 ARG tag=19.01-py3
 ARG trtisclient
+
+# need the tensorrtserver model_config protobuf python
+# object. Since
 FROM $trtisclient as trtis
 RUN pip install /opt/tensorrtserver/pip/*.whl
 
