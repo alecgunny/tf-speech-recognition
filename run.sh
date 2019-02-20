@@ -33,13 +33,23 @@ docker run \
   --pixel_wise_stats /data/stats.tfrecords \
   --labels /data/labels.txt \
   --input_shape 99 161 \
-  --learning_rate 2e-7 \
-  --batch_size 512 \
+  --learning_rate 1e-5 \
+  --batch_size 256 \
   --num_epochs 1 \
   --num_gpus 4 \
   --model_store_dir /modelstore \
   --model_name my_tf_model \
-  --model_version 0
+  --model_version 0 \
+  --count 4
+
+docker run \
+  --rm \
+  -it \
+  --runtime nvidia \
+  -v $PWD/src:/workspace \
+  -v modelstore:/modelstore \
+  $TF_IMAGE \
+  ./convert_to_trt.sh
 
 docker run \
   --rm \

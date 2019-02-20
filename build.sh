@@ -1,5 +1,5 @@
 #!/bin/bash
-TRT_SERVER_DIR=github.com/nvidia/tensorrtserver#r19.01
+TRT_SERVER_DIR=$PWD/tensorrt-inference-server
 docker build \
   -t $USER/tensorrtserver:client \
   --target trtserver_build \
