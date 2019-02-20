@@ -1,5 +1,6 @@
 import tensorflow as tf
 import model_config_pb2
+
 import multiprocessing as mp
 import argparse
 import shutil
@@ -84,6 +85,17 @@ def export_as_saved_model(
     '{}/{}'.format(export_dir, 'model.savedmodel'))
 
 
+def load_stats(stats_path, input_shape):
+  iterator = tf.python_io.tf_record_iterator(stats_path)
+  features = {
+    'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
+    'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)}
+  parsed = tf.parse_single_example(next(iterator), features)
+  mean = tf.reshape(parsed['mean'], input_shape)
+  std = tf.reshape(parsed['var']**0.5, input_shape) # square rooting the variance
+  return mean, std
+
+
 def make_spectrogram(audio):
   frame_length = _FRAME_LENGTH * _SAMPLE_RATE // 1e3
   frame_step = _FRAME_STEP * _SAMPLE_RATE // 1e3
@@ -117,38 +129,31 @@ def serving_input_receiver_fn(stats=None, spec_shape=None, eps=_EPS):
   return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
 
 
-def load_stats(stats_path, input_shape):
-  iterator = tf.python_io.tf_record_iterator(stats_path)
+def parse_fn(
+    record,
+    table,
+    input_shape,
+    labels,
+    shift=None,
+    scale=None,
+    eps=_EPS):
   features = {
-    'mean': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
-    'var': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True)}
-  parsed = tf.parse_single_example(next(iterator), features)
-  mean = tf.reshape(parsed['mean'], input_shape)
-  std = tf.reshape(parsed['var']**0.5, input_shape) # square rooting the variance
-  return mean, std
+    'spec': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
+    'label': tf.FixedLenFeature((), tf.string, default_value="")}
+  parsed = tf.parse_single_example(record, features)
 
+  # preprocess and normalize spectrogrm
+  spec = tf.reshape(parsed['spec'], input_shape) # Time steps x Frequency bins
+  if shift is not None:
+    spec -= shift
+  if scale is not None:
+    spec /=  scale + eps
+  spec = tf.expand_dims(spec, axis=2) # add channel dimension, T x F x 1
 
-def get_parse_fn(table, input_shape, labels, stats=None, eps=_EPS):
-  if stats is not None:
-    shift, scale = load_stats(stats, input_shape)
-
-  def parse_spectrogram(record):
-    features = {
-      'spec': tf.FixedLenSequenceFeature((), tf.float32, allow_missing=True),
-      'label': tf.FixedLenFeature((), tf.string, default_value="")}
-    parsed = tf.parse_single_example(record, features)
-
-    # preprocess and normalize spectrogrm
-    spec = tf.reshape(parsed['spec'], input_shape) # Time steps x Frequency bins
-    if stats is not None:
-      spec = (spec - shift) / (scale + eps) 
-    spec = tf.expand_dims(spec, axis=2) # add channel dimension, T x F x 1
-
-    label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
-    label = table.lookup(label)[0]
-    label = tf.one_hot(label, len(labels)+1)
-    return spec, label
-  return parse_spectrogram
+  label = tf.string_split([parsed['label']], delimiter="/").values[-2:-1]
+  label = table.lookup(label)[0]
+  label = tf.one_hot(label, len(labels)+1)
+  return spec, label
 
 
 def input_fn(
@@ -165,12 +170,22 @@ def input_fn(
     mapping=tf.constant(labels),
     num_oov_buckets=1)
 
-  parse_spectrogram = get_parse_fn(table, input_shape, labels, stats=stats, eps=eps)
+  shift, scale = None, None
+  if stats is not None:
+    shift, scale = load_stats(stats, input_shape)
+
   dataset = dataset.apply(
     tf.data.experimental.shuffle_and_repeat(buffer_size, num_epochs))
   dataset = dataset.apply(
     tf.data.experimental.map_and_batch(
-      map_func=parse_spectrogram,
+      map_func=lambda record: parse_fn(
+        record,
+        table,
+        input_shape,
+        labels,
+        shift=shift,
+        scale=scale,
+        eps=eps),
       batch_size=batch_size,
       num_parallel_calls=mp.cpu_count()))
   dataset.prefetch(buffer_size=None) # tf.data.experimental.AUTOTUNE)
@@ -317,8 +332,9 @@ if __name__ == '__main__':
 
   FLAGS = parser.parse_args()
 
-  # record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
-  num_train_samples = 51088 #len([record for record in record_iterator])
+  record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
+  num_train_samples = len([record for record in record_iterator])
   effective_batch_size = FLAGS.batch_size * FLAGS.num_gpus
   FLAGS.max_steps = FLAGS.num_epochs*num_train_samples // (effective_batch_size)
   main(FLAGS)
+

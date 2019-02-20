@@ -33,7 +33,7 @@ docker run \
   --pixel_wise_stats /data/stats.tfrecords \
   --labels /data/labels.txt \
   --input_shape 99 161 \
-  --learning_rate 1e-5 \
+  --learning_rate 5e-6 \
   --batch_size 256 \
   --num_epochs 1 \
   --num_gpus 4 \
