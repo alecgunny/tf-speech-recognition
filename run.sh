@@ -33,9 +33,9 @@ docker run \
   --pixel_wise_stats /data/stats.tfrecords \
   --labels /data/labels.txt \
   --input_shape 99 161 \
-  --learning_rate 5e-6 \
-  --batch_size 256 \
-  --num_epochs 1 \
+  --learning_rate 1.25e-3 \
+  --batch_size 512 \
+  --num_epochs 20 \
   --num_gpus 4 \
   --model_store_dir /modelstore \
   --model_name my_tf_model \
