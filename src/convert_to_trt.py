@@ -12,10 +12,10 @@ tf_model_name = 'my_tf_model'
 model_name = 'my_tf_trt_model'
 model_version = 0
 output_name = 'fc1000/Softmax'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 tf_graph_def = tf.GraphDef()
-with tf.gfile.GFile('/tmp/frozen_graph.pb', 'rb') as f:
+with tf.gfile.GFile('/modelstore/tmp_frozen_graph.pb', 'rb') as f:
   tf_graph_def.ParseFromString(f.read())
 tf_graph_def = tf.graph_util.remove_training_nodes(tf_graph_def)
 

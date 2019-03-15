@@ -1,6 +1,7 @@
 import tensorflow as tf
 import model_config_pb2
 
+import numpy as np
 import multiprocessing as mp
 import argparse
 import shutil
@@ -192,10 +193,18 @@ def input_fn(
   return dataset
 
 
+def random_data_generator(batch_size, input_shape, labels):
+  while True:
+    yield np.random.randn(batch_size, *input_shape), np.random.randint(len(labels), size=(batch_size, 1))
+
+
 def main(FLAGS):
-  with open(FLAGS.labels, 'r') as f:
-    labels = f.read().split(",")
-    labels = labels[:20]
+  if not FLAGS.use_fake_data:
+    with open(FLAGS.labels, 'r') as f:
+      labels = f.read().split(",")
+      labels = labels[:20]
+  else:
+    labels = ["hey", "you", "get", "off", "of", "my", "cloud"]
 
   # build and compile a keras model then convert it to an estimator
   input_shape = tuple(FLAGS.input_shape) + (1,)
@@ -217,24 +226,38 @@ def main(FLAGS):
   estimator = tf.keras.estimator.model_to_estimator(model, config=config)
 
   # train our estimator with data from our input_fn
-  train_spec = tf.estimator.TrainSpec(
-    input_fn=lambda : input_fn(
-      FLAGS.train_data,
-      labels,
-      FLAGS.batch_size,
-      FLAGS.num_epochs,
-      FLAGS.input_shape,
-      stats=FLAGS.pixel_wise_stats),
-    max_steps=FLAGS.max_steps) 
-  eval_spec = tf.estimator.EvalSpec(
-    input_fn=lambda : input_fn(
-      FLAGS.valid_data,
-      labels,
-      FLAGS.batch_size*8,
-      1,
-      FLAGS.input_shape,
-      stats=FLAGS.pixel_wise_stats),
-    throttle_secs=FLAGS.eval_throttle_secs)
+  if not FLAGS.use_fake_data:
+    train_spec = tf.estimator.TrainSpec(
+      input_fn=lambda : input_fn(
+        FLAGS.train_data,
+        labels,
+        FLAGS.batch_size,
+        FLAGS.num_epochs,
+        FLAGS.input_shape,
+        stats=FLAGS.pixel_wise_stats),
+      max_steps=FLAGS.max_steps) 
+    eval_spec = tf.estimator.EvalSpec(
+      input_fn=lambda : input_fn(
+        FLAGS.valid_data,
+        labels,
+        FLAGS.batch_size*8,
+        1,
+        FLAGS.input_shape,
+        stats=FLAGS.pixel_wise_stats),
+      throttle_secs=FLAGS.eval_throttle_secs)
+  else:
+    train_spec = tf.estimator.TrainSpec(
+      input_fn=lambda : tf.data.Dataset.from_generator(
+        lambda : random_data_generator(FLAGS.batch_size, input_shape, labels),
+        (tf.float32, tf.int64),
+        ((FLAGS.batch_size,)+input_shape, (FLAGS.batch_size, 1))),
+      max_steps=FLAGS.max_steps)
+    eval_spec = tf.estimator.EvalSpec(
+      input_fn=lambda : tf.data.Dataset.from_generator(
+        lambda : random_data_generator(FLAGS.batch_size, input_shape, labels),
+        (tf.float32, tf.int64),
+        ((FLAGS.batch_size,)+input_shape, (FLAGS.batch_size, 1))),
+      steps=1)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
   # export our model
@@ -329,11 +352,17 @@ if __name__ == '__main__':
     '--log_steps',
     type=int,
     default=2)
+  parser.add_argument(
+    '--use_fake_data',
+    action='store_true')
 
   FLAGS = parser.parse_args()
 
-  record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
-  num_train_samples = len([record for record in record_iterator])
+  if not FLAGS.use_fake_data:
+    record_iterator = tf.python_io.tf_record_iterator(FLAGS.train_data)
+    num_train_samples = len([record for record in record_iterator])
+  else:
+    num_train_samples = 10000
   effective_batch_size = FLAGS.batch_size * FLAGS.num_gpus
   FLAGS.max_steps = FLAGS.num_epochs*num_train_samples // (effective_batch_size)
   main(FLAGS)
